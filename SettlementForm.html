@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"], 
+      input[type="number"], 
+      select {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .button-group {
+        margin-top: 20px;
+        text-align: right;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.cancel {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-right: 10px;
+      }
+      .transaction-summary {
+        background-color: #f9f9f9;
+        padding: 10px;
+        margin-bottom: 20px;
+        border-radius: 4px;
+      }
+      .settlement-item {
+        background-color: #f0f8ff;
+        padding: 10px;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        position: relative;
+      }
+      .remove-settlement {
+        position: absolute;
+        top: 5px;
+        right: 5px;
+        background-color: #ff4d4d;
+        color: white;
+        border: none;
+        border-radius: 50%;
+        width: 20px;
+        height: 20px;
+        line-height: 20px;
+        text-align: center;
+        cursor: pointer;
+      }
+      .add-settlement {
+        background-color: #4caf50;
+        width: 100%;
+      }
+      .error {
+        color: red;
+        margin-bottom: 15px;
+      }
+      .success {
+        color: green;
+        margin-bottom: 15px;
+      }
+      .settlement-grid {
+        display: grid;
+        grid-template-columns: 1fr 1fr 1fr;
+        grid-gap: 10px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Transaction Settlement</h2>
+    
+    <div id="message" class="error" style="display:none;"></div>
+    
+    <div class="transaction-summary">
+      <h3>Transaction Summary</h3>
+      <p><strong>Customer:</strong> <?= transactionData.customer ?></p>
+      <p><strong>Type:</strong> <?= transactionData.transactionType ?></p>
+      <p><strong>Currency:</strong> <?= transactionData.currency ?></p>
+      <p><strong>Amount:</strong> <?= transactionData.amount ?></p>
+      <p><strong>Total Value (NGN):</strong> <?= (transactionData.amount * transactionData.rate).toLocaleString() ?></p>
+    </div>
+    
+    <h3>Settlement Methods</h3>
+    <p>Total amount to settle: <span id="totalAmount"><?= transactionData.amount ?></span> <?= transactionData.currency ?></p>
+    <p>Remaining: <span id="remainingAmount"><?= transactionData.amount ?></span> <?= transactionData.currency ?></p>
+    
+    <form id="settlementForm">
+      <div id="settlementContainer">
+        <!-- Settlement items will be added here -->
+      </div>
+      
+      <button type="button" class="add-settlement" onclick="addSettlement()">+ Add Settlement Method</button>
+      
+      <div class="button-group">
+        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit">Complete Transaction</button>
+      </div>
+    </form>
+    
+    <script>
+      // Keep track of settlements
+      let settlements = [];
+      const totalAmount = parseFloat(<?= transactionData.amount ?>);
+      const currency = '<?= transactionData.currency ?>';
+      
+      // Initialize with one settlement
+      document.addEventListener('DOMContentLoaded', function() {
+        addSettlement();
+      });
+      
+      // Add a new settlement method
+      function addSettlement() {
+        const index = settlements.length;
+        
+        // Create settlement item
+        const settlementItem = document.createElement('div');
+        settlementItem.className = 'settlement-item';
+        settlementItem.dataset.index = index;
+        
+        // Calculate remaining amount
+        let usedAmount = 0;
+        settlements.forEach(settlement => {
+          usedAmount += parseFloat(settlement.amount || 0);
+        });
+        const remainingAmount = totalAmount - usedAmount;
+        
+        // Set default amount to remaining amount
+        settlements.push({
+          settlementType: '',
+          currency: currency,
+          amount: remainingAmount,
+          bankAccount: '',
+          notes: ''
+        });
+        
+        // Create form fields
+        settlementItem.innerHTML = `
+          <button type="button" class="remove-settlement" onclick="removeSettlement(${index})">×</button>
+          
+          <div class="settlement-grid">
+            <div class="form-group">
+              <label for="settlementType_${index}">Settlement Type</label>
+              <select id="settlementType_${index}" onchange="updateSettlement(${index}, 'settlementType', this.value)" required>
+                <option value="">Select Type</option>
+                <? for (var i = 0; i < settlementTypes.length; i++) { ?>
+                  <option value="<?= settlementTypes[i] ?>"><?= settlementTypes[i] ?></option>
+                <? } ?>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="settlementCurrency_${index}">Currency</label>
+              <select id="settlementCurrency_${index}" onchange="updateSettlement(${index}, 'currency', this.value)" required>
+                <? for (var i = 0; i < currencies.length; i++) { ?>
+                  <option value="<?= currencies[i] ?>" ${currency === '<?= currencies[i] ?>' ? 'selected' : ''}><?= currencies[i] ?></option>
+                <? } ?>
+              </select>
+            </div>
+            
+            <div class="form-group">
+              <label for="settlementAmount_${index}">Amount</label>
+              <input type="number" id="settlementAmount_${index}" value="${remainingAmount}" step="0.01" min="0" 
+                onchange="updateSettlement(${index}, 'amount', this.value)" required>
+            </div>
+          </div>
+          
+          <div class="form-group">
+            <label for="settlementBank_${index}">Bank/Account (if applicable)</label>
+            <input type="text" id="settlementBank_${index}" onchange="updateSettlement(${index}, 'bankAccount', this.value)">
+          </div>
+          
+          <div class="form-group">
+            <label for="settlementNotes_${index}">Notes</label>
+            <input type="text" id="settlementNotes_${index}" onchange="updateSettlement(${index}, 'notes', this.value)">
+          </div>
+        `;
+        
+        // Add to container
+        document.getElementById('settlementContainer').appendChild(settlementItem);
+        
+        // Update totals
+        updateTotals();
+      }
+      
+      // Remove a settlement method
+      function removeSettlement(index) {
+        // Remove the settlement from the array
+        settlements.splice(index, 1);
+        
+        // Remove from DOM
+        const settlementItems = document.querySelectorAll('.settlement-item');
+        settlementItems[index].remove();
+        
+        // Update data attributes for remaining items
+        const remainingItems = document.querySelectorAll('.settlement-item');
+        remainingItems.forEach((item, i) => {
+          item.dataset.index = i;
+          
+          // Update onclick handlers
+          const removeButton = item.querySelector('.remove-settlement');
+          removeButton.setAttribute('onclick', `removeSettlement(${i})`);
+          
+          // Update input IDs and onchange handlers
+          const inputs = item.querySelectorAll('input, select');
+          inputs.forEach(input => {
+            const idParts = input.id.split('_');
+            input.id = `${idParts[0]}_${i}`;
+            
+            if (input.hasAttribute('onchange')) {
+              const onchangeAttr = input.getAttribute('onchange');
+              const newOnchange = onchangeAttr.replace(/updateSettlement\(\d+,/, `updateSettlement(${i},`);
+              input.setAttribute('onchange', newOnchange);
+            }
+          });
+        });
+        
+        // Update totals
+        updateTotals();
+      }
+      
+      // Update a settlement property
+      function updateSettlement(index, property, value) {
+        if (property === 'amount') {
+          value = parseFloat(value) || 0;
+        }
+        
+        settlements[index][property] = value;
+        updateTotals();
+      }
+      
+      // Update total and remaining amounts
+      function updateTotals() {
+        let usedAmount = 0;
+        settlements.forEach(settlement => {
+          if (settlement.currency === currency) {
+            usedAmount += parseFloat(settlement.amount || 0);
+          }
+        });
+        
+        const remainingAmount = totalAmount - usedAmount;
+        document.getElementById('remainingAmount').textContent = remainingAmount.toFixed(2);
+        
+        // Highlight if there's a discrepancy
+        if (Math.abs(remainingAmount) > 0.01) {
+          document.getElementById('remainingAmount').style.color = 'red';
+        } else {
+          document.getElementById('remainingAmount').style.color = 'green';
+        }
+      }
+      
+      // Form submission handler
+      document.getElementById('settlementForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Validate settlements
+        let usedAmount = 0;
+        settlements.forEach(settlement => {
+          if (settlement.currency === currency) {
+            usedAmount += parseFloat(settlement.amount || 0);
+          }
+        });
+        
+        const remainingAmount = totalAmount - usedAmount;
+        
+        if (Math.abs(remainingAmount) > 0.01) {
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = "Settlement amounts do not match the transaction amount. Please adjust.";
+          messageDiv.style.display = 'block';
+          return;
+        }
+        
+        // Submit data
+        const formData = {
+          settlements: settlements
+        };
+        
+        // Send data to server
+        google.script.run
+          .withSuccessHandler(onSuccess)
+          .withFailureHandler(onFailure)
+          .processSettlementForm(formData);
+      });
+      
+      // Success handler
+      function onSuccess(result) {
+        if (result.success) {
+          // Show success message
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = result.message;
+          messageDiv.className = 'success';
+          messageDiv.style.display = 'block';
+          
+          // Close the dialog after a delay
+          setTimeout(function() {
+            google.script.host.close();
+          }, 2000);
+        } else {
+          // Show error message
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = result.message;
+          messageDiv.className = 'error';
+          messageDiv.style.display = 'block';
+        }
+      }
+      
+      // Failure handler
+      function onFailure(error) {
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = "Error: " + error.message;
+        messageDiv.className = 'error';
+        messageDiv.style.display = 'block';
+      }
+    </script>
+  </body>
+</html>
