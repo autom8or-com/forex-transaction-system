@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"], 
+      input[type="number"], 
+      input[type="date"], 
+      select, 
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .button-group {
+        margin-top: 20px;
+        text-align: right;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.cancel {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-right: 10px;
+      }
+      .error {
+        color: red;
+        margin-bottom: 15px;
+      }
+      .success {
+        color: green;
+        margin-bottom: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>New Transaction</h2>
+    
+    <div id="message" class="error" style="display:none;"></div>
+    
+    <form id="transactionForm">
+      <div class="form-group">
+        <label for="date">Date</label>
+        <input type="date" id="date" name="date" value="<?= today ?>" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="customer">Customer</label>
+        <input type="text" id="customer" name="customer" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="transactionType">Transaction Type</label>
+        <select id="transactionType" name="transactionType" required>
+          <? for (var i = 0; i < transactionTypes.length; i++) { ?>
+            <option value="<?= transactionTypes[i] ?>"><?= transactionTypes[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="currency">Currency</label>
+        <select id="currency" name="currency" required>
+          <? for (var i = 0; i < currencies.length; i++) { ?>
+            <option value="<?= currencies[i] ?>" <?= currencies[i] === defaultCurrency ? 'selected' : '' ?>><?= currencies[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="amount">Amount</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="rate">Rate</label>
+        <input type="number" id="rate" name="rate" step="0.01" min="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="nature">Nature of Transaction</label>
+        <select id="nature" name="nature" required>
+          <option value="Transferred to customer">Transferred to customer</option>
+          <option value="Received via transfer">Received via transfer</option>
+          <option value="Cash Swap for offshore">Cash Swap for offshore</option>
+          <option value="Cash Swap for offshore pounds">Cash Swap for offshore pounds</option>
+          <option value="Cash Swap">Cash Swap</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="source">Source</label>
+        <select id="source" name="source" required>
+          <option value="Walk-in">Walk-in</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Cash">Cash</option>
+          <option value="Referral">Referral</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="staff">Staff</label>
+        <select id="staff" name="staff" required>
+          <? for (var i = 0; i < staffList.length; i++) { ?>
+            <option value="<?= staffList[i] ?>"><?= staffList[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <label for="multiSettlement">Multiple Settlement Methods?</label>
+        <select id="multiSettlement" name="multiSettlement">
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit">Save Transaction</button>
+      </div>
+    </form>
+    
+    <script>
+      // Form submission handler
+      document.getElementById('transactionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Collect form data
+        const formData = {
+          date: document.getElementById('date').value,
+          customer: document.getElementById('customer').value,
+          transactionType: document.getElementById('transactionType').value,
+          currency: document.getElementById('currency').value,
+          amount: document.getElementById('amount').value,
+          rate: document.getElementById('rate').value,
+          nature: document.getElementById('nature').value,
+          source: document.getElementById('source').value,
+          staff: document.getElementById('staff').value,
+          notes: document.getElementById('notes').value,
+          multiSettlement: document.getElementById('multiSettlement').value
+        };
+        
+        // Send data to server
+        google.script.run
+          .withSuccessHandler(onSuccess)
+          .withFailureHandler(onFailure)
+          .processTransactionForm(formData);
+      });
+      
+      // Success handler
+      function onSuccess(result) {
+        if (result.success) {
+          if (result.showSettlementForm) {
+            // Redirect to settlement form
+            google.script.run.showSettlementForm();
+            google.script.host.close();
+          } else {
+            // Show success message
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = result.message;
+            messageDiv.className = 'success';
+            messageDiv.style.display = 'block';
+            
+            // Close the dialog after a delay
+            setTimeout(function() {
+              google.script.host.close();
+            }, 2000);
+          }
+        } else {
+          // Handle special cases
+          if (result.showSwapForm) {
+            google.script.run.showSwapForm();
+            google.script.host.close();
+          } else {
+            // Show error message
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = result.message;
+            messageDiv.className = 'error';
+            messageDiv.style.display = 'block';
+          }
+        }
+      }
+      
+      // Failure handler
+      function onFailure(error) {
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = "Error: " + error.message;
+        messageDiv.className = 'error';
+        messageDiv.style.display = 'block';
+      }
+      
+      // Initialize
+      document.addEventListener('DOMContentLoaded', function() {
+        // Calculate total value when amount or rate changes
+        document.getElementById('amount').addEventListener('input', calculateTotal);
+        document.getElementById('rate').addEventListener('input', calculateTotal);
+        
+        // Set default type based on transaction type
+        document.getElementById('transactionType').addEventListener('change', updateNatureField);
+      });
+      
+      // Calculate total value
+      function calculateTotal() {
+        const amount = parseFloat(document.getElementById('amount').value) || 0;
+        const rate = parseFloat(document.getElementById('rate').value) || 0;
+        const total = amount * rate;
+        
+        // If we had a total field, we'd update it here
+        console.log('Total value: ' + total.toFixed(2));
+      }
+      
+      // Update nature field based on transaction type
+      function updateNatureField() {
+        const transactionType = document.getElementById('transactionType').value;
+        const natureField = document.getElementById('nature');
+        
+        // Clear current selection
+        natureField.value = '';
+        
+        // Set default value based on transaction type
+        if (transactionType === 'Buy') {
+          natureField.value = 'Transferred to customer';
+        } else if (transactionType === 'Sell') {
+          natureField.value = 'Received via transfer';
+        }
+      }
+    </script>
+  </body>
+</html>
