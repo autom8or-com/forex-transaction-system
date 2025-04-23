@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"], 
+      input[type="number"], 
+      input[type="date"], 
+      select, 
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .button-group {
+        margin-top: 20px;
+        text-align: right;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.cancel {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-right: 10px;
+      }
+      .error {
+        color: red;
+        margin-bottom: 15px;
+      }
+      .success {
+        color: green;
+        margin-bottom: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Inventory Adjustment</h2>
+    
+    <div id="message" class="error" style="display:none;"></div>
+    
+    <form id="adjustmentForm">
+      <div class="form-group">
+        <label for="date">Date</label>
+        <input type="date" id="date" name="date" value="<?= today ?>" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="currency">Currency</label>
+        <select id="currency" name="currency" required>
+          <? for (var i = 0; i < currencies.length; i++) { ?>
+            <option value="<?= currencies[i] ?>"><?= currencies[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="amount">Adjustment Amount (positive to add, negative to subtract)</label>
+        <input type="number" id="amount" name="amount" step="0.01" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="reason">Reason for Adjustment</label>
+        <textarea id="reason" name="reason" rows="3" required></textarea>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit">Save Adjustment</button>
+      </div>
+    </form>
+    
+    <script>
+      // Form submission handler
+      document.getElementById('adjustmentForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Collect form data
+        const formData = {
+          date: document.getElementById('date').value,
+          currency: document.getElementById('currency').value,
+          amount: document.getElementById('amount').value,
+          reason: document.getElementById('reason').value
+        };
+        
+        // Send data to server
+        google.script.run
+          .withSuccessHandler(onSuccess)
+          .withFailureHandler(onFailure)
+          .processAdjustmentForm(formData);
+      });
+      
+      // Success handler
+      function onSuccess(result) {
+        if (result.success) {
+          // Show success message
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = result.message;
+          messageDiv.className = 'success';
+          messageDiv.style.display = 'block';
+          
+          // Close the dialog after a delay
+          setTimeout(function() {
+            google.script.host.close();
+          }, 2000);
+        } else {
+          // Show error message
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = result.message;
+          messageDiv.className = 'error';
+          messageDiv.style.display = 'block';
+        }
+      }
+      
+      // Failure handler
+      function onFailure(error) {
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = "Error: " + error.message;
+        messageDiv.className = 'error';
+        messageDiv.style.display = 'block';
+      }
+    </script>
+  </body>
+</html>
