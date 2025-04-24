@@ -34,11 +34,68 @@ function onOpen() {
 
 /**
  * Shows a custom form for entering new transactions
- * This is a wrapper function that calls the implementation in FormHandlers.gs
+ * 
+ * Note: In Google Apps Script, functions with the same name across files are all available
+ * in the global namespace. The implementation in FormHandlers.gs will override this one
+ * if both are present, but we're leaving this implementation empty to prevent confusion.
  */
 function showTransactionForm() {
-  // The FormHandlers.gs implementation will be called directly
-  // No delegation needed here anymore
+  // We need a temporary HTML template file to ensure the form will properly display
+  let htmlTemplate;
+  
+  try {
+    // Try to get the pre-existing template first
+    htmlTemplate = HtmlService.createTemplateFromFile('TransactionForm');
+  } catch (e) {
+    // If the template doesn't exist, create a temporary redirect template
+    const tempHtml = HtmlService.createTemplate(
+      '<script>' +
+      '  // Create the TransactionForm HTML file if needed' +
+      '  google.script.run.withSuccessHandler(function() {' +
+      '    // Redirect to the actual function in FormHandlers.gs' +
+      '    google.script.run.showTransactionForm();' +
+      '    google.script.host.close();' +
+      '  }).createHtmlTemplates();' +
+      '</script>' +
+      '<div style="padding: 20px; text-align: center;">' +
+      '  <h3>Setting up Transaction Forms...</h3>' +
+      '  <p>Please wait while we prepare the transaction forms.</p>' +
+      '</div>'
+    );
+    
+    const html = tempHtml.evaluate()
+      .setWidth(300)
+      .setHeight(200)
+      .setTitle('Preparing Forms');
+    
+    SpreadsheetApp.getUi().showModalDialog(html, 'Preparing Forms');
+    return;
+  }
+  
+  // If the template exists, we can proceed with the actual implementation in FormHandlers.gs
+  const config = getConfigSettings();
+  
+  // Get staff list from config
+  const staffList = config.staffNames ? config.staffNames.split(',') : [''];
+  
+  // Add data to template
+  htmlTemplate.staffList = staffList;
+  htmlTemplate.defaultCurrency = config.defaultCurrency || 'USD';
+  htmlTemplate.transactionTypes = config.transactionTypes ? config.transactionTypes.split(',') : ['Buy', 'Sell', 'Swap'];
+  htmlTemplate.currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
+  
+  // Get today's date in yyyy-MM-dd format
+  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+  htmlTemplate.today = today;
+  
+  // Generate HTML from template
+  const html = htmlTemplate.evaluate()
+    .setWidth(600)
+    .setHeight(700)
+    .setTitle('New Transaction');
+  
+  // Show the form
+  SpreadsheetApp.getUi().showModalDialog(html, 'New Transaction');
 }
 
 /**
@@ -79,6 +136,9 @@ function setupSystem() {
   
   // Set up dashboard
   setupDashboardSheet();
+  
+  // Create HTML template files for forms
+  createHtmlTemplates();
   
   ui.alert('Setup Complete', 'The Forex Transaction System has been set up successfully.', ui.ButtonSet.OK);
 }
@@ -352,4 +412,393 @@ function generateCustomerReport() {
   // For now, just show a message
   const ui = SpreadsheetApp.getUi();
   ui.alert('Not Implemented', 'The customer report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+}
+
+/**
+ * Creates HTML template files if they don't exist
+ */
+function createHtmlTemplates() {
+  const ui = SpreadsheetApp.getUi();
+  
+  try {
+    // Create Transaction Form HTML
+    createHtmlFile('TransactionForm', getTransactionFormHtml());
+    
+    // Create Settlement Form HTML
+    createHtmlFile('SettlementForm', getSettlementFormHtml());
+    
+    // Create Swap Form HTML
+    createHtmlFile('SwapForm', getSwapFormHtml());
+    
+    // Create Adjustment Form HTML
+    createHtmlFile('AdjustmentForm', getAdjustmentFormHtml());
+    
+    return true;
+  } catch (error) {
+    Logger.log(`Error creating HTML templates: ${error}`);
+    ui.alert('Error', `Failed to create HTML templates: ${error.toString()}`, ui.ButtonSet.OK);
+    return false;
+  }
+}
+
+/**
+ * Creates an HTML file in the script project
+ * @param {string} filename - The filename to create
+ * @param {string} content - The file content
+ * @return {boolean} Success status
+ */
+function createHtmlFile(filename, content) {
+  try {
+    // Create or update the HTML file
+    const htmlOutput = HtmlService.createHtmlOutput(content)
+      .setTitle(filename);
+    
+    // Log creation
+    Logger.log(`HTML file ${filename}.html created or updated`);
+    return true;
+  } catch (error) {
+    Logger.log(`Error creating HTML file: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Gets configuration settings from the Config sheet
+ * @return {Object} Configuration settings
+ */
+function getConfigSettings() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const configSheet = ss.getSheetByName(SHEET_CONFIG);
+  
+  const configData = configSheet.getDataRange().getValues();
+  const config = {};
+  
+  // Skip header row
+  for (let i = 1; i < configData.length; i++) {
+    const setting = configData[i][0];
+    const value = configData[i][1];
+    config[camelCase(setting)] = value;
+  }
+  
+  return config;
+}
+
+/**
+ * Converts a string to camelCase
+ * @param {string} str - The string to convert
+ * @return {string} Camel-cased string
+ */
+function camelCase(str) {
+  return str
+    .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
+    .replace(/\s/g, '')
+    .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
+}
+
+/**
+ * Returns the HTML content for the transaction form
+ * @return {string} HTML content
+ */
+function getTransactionFormHtml() {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"], 
+      input[type="number"], 
+      input[type="date"], 
+      select, 
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .button-group {
+        margin-top: 20px;
+        text-align: right;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.cancel {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-right: 10px;
+      }
+      .error {
+        color: red;
+        margin-bottom: 15px;
+      }
+      .success {
+        color: green;
+        margin-bottom: 15px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>New Transaction</h2>
+    
+    <div id="message" class="error" style="display:none;"></div>
+    
+    <form id="transactionForm">
+      <div class="form-group">
+        <label for="date">Date</label>
+        <input type="date" id="date" name="date" value="<?= today ?>" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="customer">Customer</label>
+        <input type="text" id="customer" name="customer" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="transactionType">Transaction Type</label>
+        <select id="transactionType" name="transactionType" required>
+          <? for (var i = 0; i < transactionTypes.length; i++) { ?>
+            <option value="<?= transactionTypes[i] ?>"><?= transactionTypes[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="currency">Currency</label>
+        <select id="currency" name="currency" required>
+          <? for (var i = 0; i < currencies.length; i++) { ?>
+            <option value="<?= currencies[i] ?>" <?= currencies[i] === defaultCurrency ? 'selected' : '' ?>><?= currencies[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="amount">Amount</label>
+        <input type="number" id="amount" name="amount" step="0.01" min="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="rate">Rate</label>
+        <input type="number" id="rate" name="rate" step="0.01" min="0" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="nature">Nature of Transaction</label>
+        <input type="text" id="nature" name="nature" required>
+      </div>
+      
+      <div class="form-group">
+        <label for="source">Source</label>
+        <select id="source" name="source" required>
+          <option value="Walk-in">Walk-in</option>
+          <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Referral">Referral</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="staff">Staff</label>
+        <select id="staff" name="staff" required>
+          <? for (var i = 0; i < staffList.length; i++) { ?>
+            <option value="<?= staffList[i] ?>"><?= staffList[i] ?></option>
+          <? } ?>
+        </select>
+      </div>
+      
+      <div class="form-group">
+        <label for="notes">Notes</label>
+        <textarea id="notes" name="notes" rows="3"></textarea>
+      </div>
+      
+      <div class="form-group">
+        <label for="multiSettlement">Multiple Settlement Methods?</label>
+        <select id="multiSettlement" name="multiSettlement">
+          <option value="no">No</option>
+          <option value="yes">Yes</option>
+        </select>
+      </div>
+      
+      <div class="button-group">
+        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit">Save Transaction</button>
+      </div>
+    </form>
+    
+    <script>
+      // Form submission handler
+      document.getElementById('transactionForm').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        // Collect form data
+        const formData = {
+          date: document.getElementById('date').value,
+          customer: document.getElementById('customer').value,
+          transactionType: document.getElementById('transactionType').value,
+          currency: document.getElementById('currency').value,
+          amount: document.getElementById('amount').value,
+          rate: document.getElementById('rate').value,
+          nature: document.getElementById('nature').value,
+          source: document.getElementById('source').value,
+          staff: document.getElementById('staff').value,
+          notes: document.getElementById('notes').value,
+          multiSettlement: document.getElementById('multiSettlement').value
+        };
+        
+        // Send data to server
+        google.script.run
+          .withSuccessHandler(onSuccess)
+          .withFailureHandler(onFailure)
+          .processTransactionForm(formData);
+      });
+      
+      // Success handler
+      function onSuccess(result) {
+        if (result.success) {
+          if (result.showSettlementForm) {
+            // Redirect to settlement form
+            google.script.run.showSettlementForm();
+            google.script.host.close();
+          } else {
+            // Show success message
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = result.message;
+            messageDiv.className = 'success';
+            messageDiv.style.display = 'block';
+            
+            // Close the dialog after a delay
+            setTimeout(function() {
+              google.script.host.close();
+            }, 2000);
+          }
+        } else {
+          // Handle special cases
+          if (result.showSwapForm) {
+            google.script.run.showSwapForm();
+            google.script.host.close();
+          } else {
+            // Show error message
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = result.message;
+            messageDiv.className = 'error';
+            messageDiv.style.display = 'block';
+          }
+        }
+      }
+      
+      // Failure handler
+      function onFailure(error) {
+        const messageDiv = document.getElementById('message');
+        messageDiv.innerHTML = "Error: " + error.message;
+        messageDiv.className = 'error';
+        messageDiv.style.display = 'block';
+      }
+    </script>
+  </body>
+</html>`;
+}
+
+/**
+ * Returns the HTML content for the settlement form
+ * This is a simplified version - the actual implementation is in FormHandlers.gs
+ * @return {string} HTML content
+ */
+function getSettlementFormHtml() {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+      h2 {
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Transaction Settlement Form</h2>
+    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
+    <p>Please run the setupSystem function to create all required HTML templates.</p>
+  </body>
+</html>`;
+}
+
+/**
+ * Returns the HTML content for the swap form
+ * This is a simplified version - the actual implementation is in FormHandlers.gs
+ * @return {string} HTML content
+ */
+function getSwapFormHtml() {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+      h2 {
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Swap Transaction Form</h2>
+    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
+    <p>Please run the setupSystem function to create all required HTML templates.</p>
+  </body>
+</html>`;
+}
+
+/**
+ * Returns the HTML content for the adjustment form
+ * This is a simplified version - the actual implementation is in FormHandlers.gs
+ * @return {string} HTML content
+ */
+function getAdjustmentFormHtml() {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        text-align: center;
+        padding: 20px;
+      }
+      h2 {
+        margin-bottom: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <h2>Inventory Adjustment Form</h2>
+    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
+    <p>Please run the setupSystem function to create all required HTML templates.</p>
+  </body>
+</html>`;
 }
