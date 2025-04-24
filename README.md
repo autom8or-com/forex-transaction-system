@@ -96,6 +96,10 @@ Please refer to the [Installation Guide](INSTALLATION.md) for detailed setup ins
 4. Run the `setupSystem` function
 5. Start using the system via the "Forex System" menu
 
+### Troubleshooting
+
+If you encounter issues with the transaction forms not displaying properly, please refer to the [Form Troubleshooting Guide](FIXING-FORMS.md) for solutions.
+
 ## Customization
 
 The system is highly customizable:
