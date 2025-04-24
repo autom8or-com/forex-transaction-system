@@ -306,16 +306,6 @@ function setupDashboardSheet() {
 }
 
 /**
- * Shows a custom form for entering new transactions
- */
-function showTransactionForm() {
-  // This will be implemented in FormHandlers.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The transaction form will be implemented in FormHandlers.gs', ui.ButtonSet.OK);
-}
-
-/**
  * Updates the daily inventory sheet with latest transaction data
  */
 function updateDailyInventory() {
