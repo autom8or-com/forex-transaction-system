@@ -33,6 +33,15 @@ function onOpen() {
 }
 
 /**
+ * Shows a custom form for entering new transactions
+ * This is a wrapper function that calls the implementation in FormHandlers.gs
+ */
+function showTransactionForm() {
+  // The FormHandlers.gs implementation will be called directly
+  // No delegation needed here anymore
+}
+
+/**
  * Initial system setup
  * Creates necessary sheets and configurations
  */
