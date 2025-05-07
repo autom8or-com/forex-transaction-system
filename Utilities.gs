@@ -46,6 +46,24 @@ function formatDateFriendly(date) {
 }
 
 /**
+ * General purpose date formatter
+ * @param {Date} date - The date to format
+ * @param {string} format - Optional format string (defaults to 'MMMM d, yyyy')
+ * @return {string} Formatted date string
+ */
+function formatDate(date, format) {
+  if (!date) return '';
+  if (!(date instanceof Date)) {
+    // Try to convert to date if it's not already a Date object
+    date = new Date(date);
+    if (isNaN(date.getTime())) return ''; // Return empty string for invalid dates
+  }
+  
+  const formatString = format || 'MMMM d, yyyy';
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), formatString);
+}
+
+/**
  * Format a number with commas and 2 decimal places
  * @param {number} num - The number to format
  * @return {string} Formatted number
