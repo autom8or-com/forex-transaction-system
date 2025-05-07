@@ -22,7 +22,10 @@ function createTransaction(transactionData) {
     const config = getConfigSettings();
     const lastRow = transactionSheet.getLastRow();
     const transactionNumber = lastRow > 1 ? lastRow : 1;
-    const transactionId = `${config.transactionIdPrefix}${padNumber(transactionNumber, 4)}`;
+    
+    // Use default prefix if not defined in config
+    const idPrefix = config.transactionIdPrefix || "TX-";
+    const transactionId = `${idPrefix}${padNumber(transactionNumber, 4)}`;
     
     // Format date
     const transactionDate = new Date(transactionData.date);
