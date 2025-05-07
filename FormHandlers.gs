@@ -228,6 +228,9 @@ function showSwapForm() {
  */
 function processSwapForm(formData) {
   try {
+    // Show loading indicator
+    showLoading("Processing swap transaction...");
+    
     // Generate swap ID
     const swapId = 'SWAP-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
     
@@ -256,6 +259,9 @@ function processSwapForm(formData) {
       success: false,
       message: `Error processing form: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Swap processing completed", "Complete", 3);
   }
 }
 
@@ -292,6 +298,9 @@ function showInventoryAdjustmentForm() {
  */
 function processAdjustmentForm(formData) {
   try {
+    // Show loading indicator
+    showLoading("Processing adjustment...");
+    
     // Create adjustment data
     const adjustmentData = {
       date: formData.date,
@@ -310,6 +319,9 @@ function processAdjustmentForm(formData) {
       success: false,
       message: `Error processing form: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Adjustment processing completed", "Complete", 3);
   }
 }
 
@@ -431,12 +443,51 @@ function getTransactionFormHtml() {
         color: green;
         margin-bottom: 15px;
       }
+      /* Loading overlay */
+      .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 1000;
+      }
+      .loading-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      .spinner {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #3498db;
+        width: 60px;
+        height: 60px;
+        margin: 20px auto;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <h2>New Transaction</h2>
     
     <div id="message" class="error" style="display:none;"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Processing transaction...</p>
+      </div>
+    </div>
     
     <form id="transactionForm">
       <div class="form-group">
@@ -516,7 +567,7 @@ function getTransactionFormHtml() {
       
       <div class="button-group">
         <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Save Transaction</button>
+        <button type="submit" id="submitButton">Save Transaction</button>
       </div>
     </form>
     
@@ -524,6 +575,12 @@ function getTransactionFormHtml() {
       // Form submission handler
       document.getElementById('transactionForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Show loading overlay
+        document.getElementById('loadingOverlay').style.display = 'block';
+        
+        // Disable submit button to prevent double submission
+        document.getElementById('submitButton').disabled = true;
         
         // Collect form data
         const formData = {
@@ -549,6 +606,9 @@ function getTransactionFormHtml() {
       
       // Success handler
       function onSuccess(result) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
         if (result.success) {
           if (result.showSettlementForm) {
             // Redirect to settlement form
@@ -567,6 +627,9 @@ function getTransactionFormHtml() {
             }, 2000);
           }
         } else {
+          // Enable submit button again
+          document.getElementById('submitButton').disabled = false;
+          
           // Handle special cases
           if (result.showSwapForm) {
             google.script.run.showSwapForm();
@@ -583,6 +646,12 @@ function getTransactionFormHtml() {
       
       // Failure handler
       function onFailure(error) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        // Enable submit button again
+        document.getElementById('submitButton').disabled = false;
+        
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
         messageDiv.className = 'error';
@@ -686,12 +755,51 @@ function getSettlementFormHtml() {
         grid-template-columns: 1fr 1fr 1fr;
         grid-gap: 10px;
       }
+      /* Loading overlay */
+      .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 1000;
+      }
+      .loading-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      .spinner {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #3498db;
+        width: 60px;
+        height: 60px;
+        margin: 20px auto;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <h2>Transaction Settlement</h2>
     
     <div id="message" class="error" style="display:none;"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Processing settlements...</p>
+      </div>
+    </div>
     
     <div class="transaction-summary">
       <h3>Transaction Summary</h3>
@@ -715,7 +823,7 @@ function getSettlementFormHtml() {
       
       <div class="button-group">
         <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Complete Transaction</button>
+        <button type="submit" id="submitButton">Complete Transaction</button>
       </div>
     </form>
     
@@ -891,6 +999,12 @@ function getSettlementFormHtml() {
           return;
         }
         
+        // Show loading overlay
+        document.getElementById('loadingOverlay').style.display = 'block';
+        
+        // Disable submit button to prevent double submission
+        document.getElementById('submitButton').disabled = true;
+        
         // Submit data
         const formData = {
           settlements: settlements
@@ -905,6 +1019,9 @@ function getSettlementFormHtml() {
       
       // Success handler
       function onSuccess(result) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
         if (result.success) {
           // Show success message
           const messageDiv = document.getElementById('message');
@@ -917,6 +1034,9 @@ function getSettlementFormHtml() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Enable submit button again
+          document.getElementById('submitButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -927,6 +1047,12 @@ function getSettlementFormHtml() {
       
       // Failure handler
       function onFailure(error) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        // Enable submit button again
+        document.getElementById('submitButton').disabled = false;
+        
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
         messageDiv.className = 'error';
@@ -1009,12 +1135,51 @@ function getSwapFormHtml() {
       h3 {
         margin-top: 0;
       }
+      /* Loading overlay */
+      .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 1000;
+      }
+      .loading-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      .spinner {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #3498db;
+        width: 60px;
+        height: 60px;
+        margin: 20px auto;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <h2>Swap Transaction</h2>
     
     <div id="message" class="error" style="display:none;"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Processing swap transaction...</p>
+      </div>
+    </div>
     
     <form id="swapForm">
       <div class="form-group">
@@ -1111,7 +1276,7 @@ function getSwapFormHtml() {
       
       <div class="button-group">
         <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Process Swap</button>
+        <button type="submit" id="submitButton">Process Swap</button>
       </div>
     </form>
     
@@ -1160,6 +1325,12 @@ function getSwapFormHtml() {
       document.getElementById('swapForm').addEventListener('submit', function(e) {
         e.preventDefault();
         
+        // Show loading overlay
+        document.getElementById('loadingOverlay').style.display = 'block';
+        
+        // Disable submit button to prevent double submission
+        document.getElementById('submitButton').disabled = true;
+        
         // Collect form data
         const formData = {
           date: document.getElementById('date').value,
@@ -1187,6 +1358,9 @@ function getSwapFormHtml() {
       
       // Success handler
       function onSuccess(result) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
         if (result.success) {
           // Show success message
           const messageDiv = document.getElementById('message');
@@ -1199,6 +1373,9 @@ function getSwapFormHtml() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Enable submit button again
+          document.getElementById('submitButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -1209,6 +1386,12 @@ function getSwapFormHtml() {
       
       // Failure handler
       function onFailure(error) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        // Enable submit button again
+        document.getElementById('submitButton').disabled = false;
+        
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
         messageDiv.className = 'error';
@@ -1278,12 +1461,51 @@ function getAdjustmentFormHtml() {
         color: green;
         margin-bottom: 15px;
       }
+      /* Loading overlay */
+      .loading-overlay {
+        display: none;
+        position: fixed;
+        top: 0;
+        left: 0;
+        width: 100%;
+        height: 100%;
+        background-color: rgba(255, 255, 255, 0.8);
+        z-index: 1000;
+      }
+      .loading-spinner {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        text-align: center;
+      }
+      .spinner {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #3498db;
+        width: 60px;
+        height: 60px;
+        margin: 20px auto;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
     </style>
   </head>
   <body>
     <h2>Inventory Adjustment</h2>
     
     <div id="message" class="error" style="display:none;"></div>
+    
+    <!-- Loading overlay -->
+    <div id="loadingOverlay" class="loading-overlay">
+      <div class="loading-spinner">
+        <div class="spinner"></div>
+        <p>Processing adjustment...</p>
+      </div>
+    </div>
     
     <form id="adjustmentForm">
       <div class="form-group">
@@ -1312,7 +1534,7 @@ function getAdjustmentFormHtml() {
       
       <div class="button-group">
         <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Save Adjustment</button>
+        <button type="submit" id="submitButton">Save Adjustment</button>
       </div>
     </form>
     
@@ -1320,6 +1542,12 @@ function getAdjustmentFormHtml() {
       // Form submission handler
       document.getElementById('adjustmentForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Show loading overlay
+        document.getElementById('loadingOverlay').style.display = 'block';
+        
+        // Disable submit button to prevent double submission
+        document.getElementById('submitButton').disabled = true;
         
         // Collect form data
         const formData = {
@@ -1338,6 +1566,9 @@ function getAdjustmentFormHtml() {
       
       // Success handler
       function onSuccess(result) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
         if (result.success) {
           // Show success message
           const messageDiv = document.getElementById('message');
@@ -1350,6 +1581,9 @@ function getAdjustmentFormHtml() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Enable submit button again
+          document.getElementById('submitButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -1360,6 +1594,12 @@ function getAdjustmentFormHtml() {
       
       // Failure handler
       function onFailure(error) {
+        // Hide loading overlay
+        document.getElementById('loadingOverlay').style.display = 'none';
+        
+        // Enable submit button again
+        document.getElementById('submitButton').disabled = false;
+        
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
         messageDiv.className = 'error';
