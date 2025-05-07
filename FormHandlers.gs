@@ -267,28 +267,73 @@ function processSwapForm(formData) {
 
 /**
  * Shows the inventory adjustment form
+ * Improved with error handling and template verification
  */
 function showInventoryAdjustmentForm() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const ui = SpreadsheetApp.getUi();
   
-  // Create HTML from template
-  const htmlTemplate = HtmlService.createTemplateFromFile('AdjustmentForm');
-  
-  // Add data to template
-  htmlTemplate.currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
-  
-  // Get today's date in yyyy-MM-dd format
-  const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
-  htmlTemplate.today = today;
-  
-  // Generate HTML from template
-  const html = htmlTemplate.evaluate()
-    .setWidth(500)
-    .setHeight(400)
-    .setTitle('Inventory Adjustment');
-  
-  // Show the form
-  SpreadsheetApp.getUi().showModalDialog(html, 'Inventory Adjustment');
+  try {
+    // First check if the AdjustmentForm template exists
+    let htmlTemplate;
+    
+    try {
+      // Try to get the template
+      htmlTemplate = HtmlService.createTemplateFromFile('AdjustmentForm');
+      Logger.log("AdjustmentForm template found successfully");
+    } catch (e) {
+      // Template doesn't exist, create a temporary HTML template to recreate it
+      Logger.log("AdjustmentForm template not found: " + e.toString());
+      
+      const tempHtml = HtmlService.createTemplate(
+        '<script>' +
+        '  // Create the HTML templates if needed' +
+        '  google.script.run.withSuccessHandler(function() {' +
+        '    // Redirect back to the adjustment form after templates are created' +
+        '    google.script.run.showInventoryAdjustmentForm();' +
+        '    google.script.host.close();' +
+        '  }).createHtmlTemplates();' +
+        '</script>' +
+        '<div style="padding: 20px; text-align: center;">' +
+        '  <h3>Setting up Adjustment Form...</h3>' +
+        '  <p>Please wait while we prepare the form templates.</p>' +
+        '</div>'
+      );
+      
+      const html = tempHtml.evaluate()
+        .setWidth(300)
+        .setHeight(200)
+        .setTitle('Preparing Form');
+      
+      ui.showModalDialog(html, 'Preparing Form');
+      return;
+    }
+    
+    // If the template exists, proceed with the form setup
+    
+    // Add data to template
+    htmlTemplate.currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
+    
+    // Get today's date in yyyy-MM-dd format
+    const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
+    htmlTemplate.today = today;
+    
+    // Generate HTML from template
+    const html = htmlTemplate.evaluate()
+      .setWidth(500)
+      .setHeight(400)
+      .setTitle('Inventory Adjustment');
+    
+    // Show the form
+    ui.showModalDialog(html, 'Inventory Adjustment');
+    
+  } catch (error) {
+    // Handle unexpected errors
+    Logger.log("Error showing adjustment form: " + error.toString());
+    ui.alert('Error', 'There was a problem loading the Adjustment Form: ' + error.toString() + 
+             '\n\nPlease run the System Setup function from the Forex System menu to recreate templates.', 
+             ui.ButtonSet.OK);
+  }
 }
 
 /**
