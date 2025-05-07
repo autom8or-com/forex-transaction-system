@@ -49,6 +49,77 @@ function updateInventoryForDateRange(startDate, endDate) {
 }
 
 /**
+ * Updates inventory based on a specific transaction
+ * Properly implemented version that actually updates the inventory
+ * @param {string} transactionId - The transaction ID
+ * @return {Object} Result with status and message
+ */
+function updateInventoryForTransaction(transactionId) {
+  try {
+    // Start with a loading indicator for long operations
+    showLoading("Updating inventory...");
+    
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+    
+    // Find the transaction
+    const transactions = transactionSheet.getDataRange().getValues();
+    const headers = transactions[0];
+    const idIndex = 0; // Transaction ID is always the first column
+    const dateIndex = headers.indexOf('Date');
+    const typeIndex = headers.indexOf('Transaction Type');
+    const currencyIndex = headers.indexOf('Currency');
+    const amountIndex = headers.indexOf('Amount');
+    
+    let transaction = null;
+    
+    for (let i = 1; i < transactions.length; i++) {
+      if (transactions[i][idIndex] === transactionId) {
+        transaction = {
+          id: transactions[i][idIndex],
+          date: transactions[i][dateIndex],
+          type: transactions[i][typeIndex],
+          currency: transactions[i][currencyIndex],
+          amount: parseFloat(transactions[i][amountIndex])
+        };
+        break;
+      }
+    }
+    
+    if (!transaction) {
+      return {
+        success: false,
+        message: `Transaction ${transactionId} not found`
+      };
+    }
+    
+    // Update inventory for the transaction's date and currency
+    const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
+    
+    // Update dashboard inventory
+    updateDashboardInventory();
+    
+    // Update running balances
+    updateRunningBalances();
+    
+    return {
+      success: result.success,
+      message: `Inventory updated for transaction ${transactionId}`,
+      details: result
+    };
+  } catch (error) {
+    Logger.log(`Error updating inventory for transaction: ${error}`);
+    return {
+      success: false,
+      message: `Error updating inventory: ${error.toString()}`
+    };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Inventory update completed", "Complete", 3);
+  }
+}
+
+/**
  * Updates inventory for a specific date and currency
  * @param {Date} date - The date to update
  * @param {string} currency - The currency to update
@@ -594,6 +665,49 @@ function reconcileCurrency(date, currency) {
     return {
       success: false,
       message: `Error reconciling currency: ${error.toString()}`
+    };
+  }
+}
+
+/**
+ * Updates daily inventory for the current day
+ * Called from Main.js when user clicks the "Update Inventory" button
+ */
+function updateDailyInventory() {
+  try {
+    // Show loading dialog
+    showLoading("Updating daily inventory...");
+    
+    // Update inventory for today
+    const today = new Date();
+    const result = updateInventoryForDateRange(today, today);
+    
+    // Update dashboard after inventory update
+    updateDashboardInventory();
+    
+    // Update running balances
+    updateRunningBalances();
+    
+    // Show completion message
+    SpreadsheetApp.getUi().alert(
+      'Inventory Updated', 
+      'Daily inventory has been updated successfully.', 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    
+    return result;
+  } catch (error) {
+    Logger.log(`Error in updateDailyInventory: ${error}`);
+    // Show error message
+    SpreadsheetApp.getUi().alert(
+      'Error', 
+      `Failed to update daily inventory: ${error.toString()}`, 
+      SpreadsheetApp.getUi().ButtonSet.OK
+    );
+    
+    return {
+      success: false,
+      message: `Error updating daily inventory: ${error.toString()}`
     };
   }
 }
