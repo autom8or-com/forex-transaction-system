@@ -15,6 +15,9 @@
  */
 function createTransaction(transactionData) {
   try {
+    // Show loading indicator while processing
+    showLoading("Creating transaction...");
+    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
@@ -57,6 +60,13 @@ function createTransaction(transactionData) {
     const newRowIndex = transactionSheet.getLastRow();
     transactionSheet.getRange(newRowIndex, 6, 1, 3).setNumberFormat('#,##0.00');
     
+    // Create the Transaction_Legs sheet if it doesn't exist
+    let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    if (!legsSheet) {
+      setupTransactionLegsSheet();
+      legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    }
+    
     // Process transaction legs if provided
     if (transactionData.legs && transactionData.legs.length > 0) {
       for (const leg of transactionData.legs) {
@@ -76,6 +86,9 @@ function createTransaction(transactionData) {
       addTransactionLeg(transactionId, defaultLeg);
     }
     
+    // Validate that the legs were properly created
+    validateTransactionLegs(transactionId);
+    
     // Update inventory if configured to do so
     if (config.autoUpdateInventory === 'TRUE') {
       updateInventoryForTransaction(transactionId);
@@ -92,6 +105,9 @@ function createTransaction(transactionData) {
       success: false,
       message: `Error creating transaction: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Transaction processing completed", "Complete", 3);
   }
 }
 
@@ -104,7 +120,18 @@ function createTransaction(transactionData) {
 function addTransactionLeg(transactionId, legData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    
+    // Ensure the Transaction_Legs sheet exists
+    let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    if (!legsSheet) {
+      setupTransactionLegsSheet();
+      legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+      
+      // If still doesn't exist, return error
+      if (!legsSheet) {
+        throw new Error("Could not create Transaction_Legs sheet");
+      }
+    }
     
     // Count existing legs for this transaction to generate leg ID
     const legCount = countLegsForTransaction(transactionId);
@@ -130,6 +157,9 @@ function addTransactionLeg(transactionId, legData) {
     const newRowIndex = legsSheet.getLastRow();
     legsSheet.getRange(newRowIndex, 5, 1, 1).setNumberFormat('#,##0.00');
     
+    // Log success for debugging
+    Logger.log(`Added transaction leg ${legId} for transaction ${transactionId}`);
+    
     return {
       success: true,
       message: 'Transaction leg added successfully',
@@ -145,6 +175,54 @@ function addTransactionLeg(transactionId, legData) {
 }
 
 /**
+ * Set up the Transaction Legs sheet if it doesn't exist
+ */
+function setupTransactionLegsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_TRANSACTION_LEGS);
+    Logger.log(`Created sheet: ${SHEET_TRANSACTION_LEGS}`);
+  }
+  
+  // Clear existing content
+  sheet.clear();
+  
+  // Set headers
+  const headers = [
+    'Transaction ID', 'Leg ID', 'Settlement Type', 'Currency', 'Amount', 
+    'Bank/Account', 'Status', 'Notes', 'Validation'
+  ];
+  
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  
+  // Set up data validation for Settlement Type
+  const settlementTypeRange = sheet.getRange(2, 3, 1000, 1);
+  const settlementTypeRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Cash', 'Bank Transfer', 'Swap In', 'Swap Out'], true)
+    .build();
+  settlementTypeRange.setDataValidation(settlementTypeRule);
+  
+  // Set up data validation for Currency
+  const currencyRange = sheet.getRange(2, 4, 1000, 1);
+  const currencyRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['USD', 'GBP', 'EUR', 'NAIRA'], true)
+    .build();
+  currencyRange.setDataValidation(currencyRule);
+  
+  // Format columns
+  sheet.getRange('E:E').setNumberFormat('#,##0.00');
+  
+  // Auto-resize columns
+  sheet.autoResizeColumns(1, headers.length);
+  
+  return sheet;
+}
+
+/**
  * Counts the number of legs for a specific transaction
  * @param {string} transactionId - The transaction ID to count legs for
  * @return {number} Number of legs
@@ -153,8 +231,15 @@ function countLegsForTransaction(transactionId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
   
+  if (!legsSheet || legsSheet.getLastRow() <= 1) {
+    return 0; // No legs yet or only header row
+  }
+  
   // Get all transaction IDs
-  const legTxIds = legsSheet.getRange(2, 1, legsSheet.getLastRow() - 1, 1).getValues();
+  const lastRow = legsSheet.getLastRow();
+  const legTxIds = lastRow > 1 ? 
+    legsSheet.getRange(2, 1, lastRow - 1, 1).getValues() : 
+    [];
   
   // Count matches
   let count = 0;
@@ -271,10 +356,11 @@ function updateInventoryForTransaction(transactionId) {
       };
     }
     
-    // Call inventory update function (will be implemented in InventoryManager.gs)
-    // For now, we'll just return success
+    // Call inventory update function
+    const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
+    
     return {
-      success: true,
+      success: result.success,
       message: `Inventory updated for transaction ${transactionId}`
     };
   } catch (error) {
@@ -325,6 +411,10 @@ function getTransactionById(transactionId) {
 function getTransactionLegs(transactionId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+  
+  if (!legsSheet) {
+    return []; // No legs sheet exists
+  }
   
   // Get all legs
   const allLegs = legsSheet.getDataRange().getValues();
@@ -554,4 +644,51 @@ function camelCase(str) {
     .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
     .replace(/\s/g, '')
     .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
+}
+
+/**
+ * Shows a loading message in a lightweight dialog
+ * @param {string} message - Message to display
+ * @return {HtmlOutput} The HTML dialog
+ */
+function showLoading(message) {
+  const html = `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 15px;
+        text-align: center;
+      }
+      .loader {
+        border: 8px solid #f3f3f3;
+        border-radius: 50%;
+        border-top: 8px solid #3498db;
+        width: 60px;
+        height: 60px;
+        margin: 20px auto;
+        animation: spin 2s linear infinite;
+      }
+      @keyframes spin {
+        0% { transform: rotate(0deg); }
+        100% { transform: rotate(360deg); }
+      }
+    </style>
+  </head>
+  <body>
+    <div class="loader"></div>
+    <p>${message || 'Loading...'}</p>
+  </body>
+</html>`;
+
+  const htmlOutput = HtmlService.createHtmlOutput(html)
+    .setWidth(300)
+    .setHeight(200);
+  
+  SpreadsheetApp.getUi().showModelessDialog(htmlOutput, 'Processing');
+  
+  return htmlOutput;
 }
