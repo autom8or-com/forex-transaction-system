@@ -15,23 +15,28 @@
  */
 function updateInventoryForDateAndCurrency(date, currency) {
   try {
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    
     // Track step for processing
-    trackProcessingStep("Inventory Update", "Starting update for " + currency, { date: formatDate(date) });
+    addProcessingStep("Starting inventory update for " + currency);
+    updateProcessingStatus("Starting update for " + currency, { date: formatDate(date) });
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     
     // Ensure the inventory sheet exists
     let inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
     if (!inventorySheet) {
-      trackProcessingStep("Inventory Update", "Creating inventory sheet", { currency: currency });
+      updateProcessingStatus("Creating inventory sheet", { currency: currency });
       setupInventorySheet();
       inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+      addProcessingStep("Created inventory tracking sheet");
     }
     
     // Format date for searching
     const dateFormatted = formatDate(date);
     
-    trackProcessingStep("Inventory Update", "Looking for existing inventory record", 
+    updateProcessingStatus("Looking for existing inventory record", 
       { date: dateFormatted, currency: currency });
     
     // Check if there's an inventory entry for this date and currency
@@ -49,13 +54,14 @@ function updateInventoryForDateAndCurrency(date, currency) {
     }
     
     // Find previous day closing for opening balance
-    trackProcessingStep("Inventory Update", "Finding previous day closing balance", 
+    updateProcessingStatus("Finding previous day closing balance", 
       { date: dateFormatted, currency: currency });
     
     const previousDayClosing = getPreviousDayClosing(date, currency);
+    addProcessingStep("Retrieved previous day closing balance");
     
     // Get purchases and sales for this date
-    trackProcessingStep("Inventory Update", "Calculating purchases and sales", 
+    updateProcessingStatus("Calculating purchases and sales", 
       { date: dateFormatted, currency: currency });
     
     const transactions = getTransactionsForDate(date, currency);
@@ -67,7 +73,8 @@ function updateInventoryForDateAndCurrency(date, currency) {
     const adjustments = getAdjustmentsForDate(date, currency);
     const closingBalance = openingBalance + purchases - sales + adjustments;
     
-    trackProcessingStep("Inventory Update", "Calculated inventory values", 
+    addProcessingStep("Calculated inventory transactions and balances");
+    updateProcessingStatus("Calculated inventory values", 
       { 
         opening: openingBalance,
         purchases: purchases,
@@ -85,8 +92,9 @@ function updateInventoryForDateAndCurrency(date, currency) {
       inventorySheet.getRange(rowIndex, 9).setValue(adjustments); // Adjustments
       inventorySheet.getRange(rowIndex, 10).setValue(closingBalance); // Closing Balance
       
-      trackProcessingStep("Inventory Update", "Updated existing inventory record", 
+      updateProcessingStatus("Updated existing inventory record", 
         { rowIndex: rowIndex });
+      addProcessingStep("Updated existing inventory record");
     } else {
       // Create new entry
       const inventoryRow = [
@@ -104,8 +112,9 @@ function updateInventoryForDateAndCurrency(date, currency) {
       
       inventorySheet.appendRow(inventoryRow);
       
-      trackProcessingStep("Inventory Update", "Created new inventory record", 
+      updateProcessingStatus("Created new inventory record", 
         { row: inventorySheet.getLastRow() });
+      addProcessingStep("Created new inventory record");
       
       // Format the new row
       const newRowIndex = inventorySheet.getLastRow();
@@ -114,9 +123,11 @@ function updateInventoryForDateAndCurrency(date, currency) {
     
     // Update future day opening balances if necessary
     updateFutureDaysOpeningBalance(date, currency, closingBalance);
+    addProcessingStep("Updated future days with new balances");
     
-    trackProcessingStep("Inventory Update", "Completed inventory update", 
+    updateProcessingStatus("Completed inventory update", 
       { date: dateFormatted, currency: currency });
+    addProcessingStep("Inventory update completed successfully");
     
     return {
       success: true,
@@ -125,16 +136,19 @@ function updateInventoryForDateAndCurrency(date, currency) {
       purchases: purchases,
       sales: sales,
       adjustments: adjustments,
-      closingBalance: closingBalance
+      closingBalance: closingBalance,
+      processingSteps: getProcessingSteps()
     };
   } catch (error) {
     Logger.log(`Error updating inventory: ${error}`);
-    trackProcessingStep("Inventory Update", "ERROR updating inventory", 
+    updateProcessingStatus("ERROR updating inventory", 
       { error: error.toString() });
+    addProcessingStep("Error occurred during inventory update");
     
     return {
       success: false,
-      message: `Error updating inventory: ${error.toString()}`
+      message: `Error updating inventory: ${error.toString()}`,
+      processingSteps: getProcessingSteps()
     };
   }
 }
@@ -288,7 +302,7 @@ function getAdjustmentsForDate(date, currency) {
  * @param {number} closingBalance - The closing balance to cascade
  */
 function updateFutureDaysOpeningBalance(fromDate, currency, closingBalance) {
-  trackProcessingStep("Inventory Update", "Updating future days", 
+  updateProcessingStatus("Updating future days", 
       { date: formatDate(fromDate), currency: currency });
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -331,7 +345,7 @@ function updateFutureDaysOpeningBalance(fromDate, currency, closingBalance) {
     }
   }
   
-  trackProcessingStep("Inventory Update", "Completed future days update", 
+  updateProcessingStatus("Completed future days update", 
       { currency: currency });
 }
 
@@ -378,15 +392,26 @@ function setupInventorySheet() {
  * @return {Array} Array of currency balances
  */
 function getCurrentInventoryBalances() {
+  // Initialize processing steps tracking
+  initializeProcessingSteps();
+  addProcessingStep("Retrieving current inventory balances");
+  
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
   
   if (!inventorySheet) {
-    return [];
+    addProcessingStep("No inventory sheet found");
+    return {
+      success: false,
+      message: "No inventory sheet found",
+      balances: [],
+      processingSteps: getProcessingSteps()
+    };
   }
   
   // Get inventory data
   const inventoryData = inventorySheet.getDataRange().getValues();
+  addProcessingStep("Retrieved inventory data");
   
   // Initialize array to hold the latest balance for each currency
   const balances = {};
@@ -415,7 +440,14 @@ function getCurrentInventoryBalances() {
     });
   }
   
-  return result;
+  addProcessingStep("Processed inventory balances");
+  
+  return {
+    success: true,
+    message: "Retrieved current inventory balances",
+    balances: result,
+    processingSteps: getProcessingSteps()
+  };
 }
 
 /**
@@ -425,16 +457,27 @@ function getCurrentInventoryBalances() {
  * @return {Array} Inventory history
  */
 function getInventoryHistory(currency, days) {
+  // Initialize processing steps tracking
+  initializeProcessingSteps();
+  addProcessingStep("Retrieving inventory history");
+  
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
   
   if (!inventorySheet) {
-    return [];
+    addProcessingStep("No inventory sheet found");
+    return {
+      success: false,
+      message: "No inventory sheet found",
+      history: [],
+      processingSteps: getProcessingSteps()
+    };
   }
   
   // Calculate cutoff date
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
+  addProcessingStep(`Calculated date range (${days} days)`);  
   
   // Get inventory data
   const inventoryData = inventorySheet.getDataRange().getValues();
@@ -461,7 +504,14 @@ function getInventoryHistory(currency, days) {
   // Sort by date
   history.sort((a, b) => a.date - b.date);
   
-  return history;
+  addProcessingStep(`Found ${history.length} days of inventory data for ${currency}`);
+  
+  return {
+    success: true,
+    message: `Retrieved inventory history for ${currency}`,
+    history: history,
+    processingSteps: getProcessingSteps()
+  };
 }
 
 /**
@@ -471,16 +521,20 @@ function getInventoryHistory(currency, days) {
  */
 function reconcileInventory(date) {
   try {
-    trackProcessingStep("Inventory Reconciliation", "Starting reconciliation", 
-      { date: formatDate(date) });
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    addProcessingStep("Starting inventory reconciliation");
+    updateProcessingStatus("Starting reconciliation", { date: formatDate(date) });
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
     
     if (!inventorySheet) {
+      addProcessingStep("No inventory sheet found");
       return {
         success: false,
-        message: 'Inventory sheet not found'
+        message: 'Inventory sheet not found',
+        processingSteps: getProcessingSteps()
       };
     }
     
@@ -491,8 +545,7 @@ function reconcileInventory(date) {
     const inventoryData = inventorySheet.getDataRange().getValues();
     const currencyBalances = {};
     
-    trackProcessingStep("Inventory Reconciliation", "Finding currency balances", 
-      { date: dateFormatted });
+    updateProcessingStatus("Finding currency balances", { date: dateFormatted });
     
     for (let i = 1; i < inventoryData.length; i++) {
       const rowDate = formatDate(inventoryData[i][0]);
@@ -509,8 +562,10 @@ function reconcileInventory(date) {
       }
     }
     
+    addProcessingStep(`Found ${Object.keys(currencyBalances).length} currencies to reconcile`);
+    
     // Calculate balances from transactions
-    trackProcessingStep("Inventory Reconciliation", "Calculating from transactions", 
+    updateProcessingStatus("Calculating from transactions", 
       { currencies: Object.keys(currencyBalances) });
     
     for (const currency in currencyBalances) {
@@ -532,6 +587,8 @@ function reconcileInventory(date) {
       currencyBalances[currency].reconciled = Math.abs(currencyBalances[currency].discrepancy) < 0.01;
     }
     
+    addProcessingStep("Calculated balances from transactions");
+    
     // Check if all currencies are reconciled
     let allReconciled = true;
     const discrepancies = [];
@@ -543,8 +600,14 @@ function reconcileInventory(date) {
       }
     }
     
-    trackProcessingStep("Inventory Reconciliation", "Completed reconciliation", 
+    updateProcessingStatus("Completed reconciliation", 
       { reconciled: allReconciled, discrepancies: discrepancies });
+    
+    if (allReconciled) {
+      addProcessingStep("All currencies reconciled successfully");
+    } else {
+      addProcessingStep(`Found ${discrepancies.length} currencies with discrepancies`);
+    }
     
     return {
       success: true,
@@ -552,16 +615,18 @@ function reconcileInventory(date) {
       date: dateFormatted,
       currencyBalances: currencyBalances,
       allReconciled: allReconciled,
-      discrepancies: discrepancies
+      discrepancies: discrepancies,
+      processingSteps: getProcessingSteps()
     };
   } catch (error) {
     Logger.log(`Error reconciling inventory: ${error}`);
-    trackProcessingStep("Inventory Reconciliation", "ERROR in reconciliation", 
-      { error: error.toString() });
+    updateProcessingStatus("ERROR in reconciliation", { error: error.toString() });
+    addProcessingStep("Error occurred during reconciliation");
     
     return {
       success: false,
-      message: `Error reconciling inventory: ${error.toString()}`
+      message: `Error reconciling inventory: ${error.toString()}`,
+      processingSteps: getProcessingSteps()
     };
   }
 }
