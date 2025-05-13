@@ -21,6 +21,9 @@ function createTransaction(transactionData) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
+    // Update processing status
+    updateProcessingStatus("Generating transaction ID...");
+    
     // Generate transaction ID
     const config = getConfigSettings();
     const lastRow = transactionSheet.getLastRow();
@@ -35,6 +38,8 @@ function createTransaction(transactionData) {
     
     // Calculate value in NGN
     const valueNGN = transactionData.amount * transactionData.rate;
+    
+    updateProcessingStatus("Saving transaction data...");
     
     // Create transaction row
     const transactionRow = [
@@ -63,17 +68,22 @@ function createTransaction(transactionData) {
     // Create the Transaction_Legs sheet if it doesn't exist
     let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     if (!legsSheet) {
+      updateProcessingStatus("Setting up transaction legs sheet...");
       setupTransactionLegsSheet();
       legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     }
     
+    updateProcessingStatus("Processing transaction legs...");
+    
     // Process transaction legs if provided
     if (transactionData.legs && transactionData.legs.length > 0) {
-      for (const leg of transactionData.legs) {
-        addTransactionLeg(transactionId, leg);
+      for (let i = 0; i < transactionData.legs.length; i++) {
+        updateProcessingStatus(`Processing settlement leg ${i+1} of ${transactionData.legs.length}...`);
+        addTransactionLeg(transactionId, transactionData.legs[i]);
       }
     } else {
       // Create a default leg if none provided
+      updateProcessingStatus("Creating default settlement leg...");
       const defaultLeg = {
         settlementType: transactionData.transactionType === 'Buy' ? 'Cash' : 'Bank Transfer',
         currency: transactionData.currency,
@@ -87,12 +97,16 @@ function createTransaction(transactionData) {
     }
     
     // Validate that the legs were properly created
+    updateProcessingStatus("Validating transaction legs...");
     validateTransactionLegs(transactionId);
     
     // Update inventory if configured to do so
     if (config.autoUpdateInventory === 'TRUE') {
+      updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
     }
+    
+    updateProcessingStatus("Transaction completed successfully!");
     
     return {
       success: true,
@@ -124,6 +138,7 @@ function addTransactionLeg(transactionId, legData) {
     // Ensure the Transaction_Legs sheet exists
     let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     if (!legsSheet) {
+      updateProcessingStatus("Creating Transaction_Legs sheet...");
       setupTransactionLegsSheet();
       legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
       
@@ -263,6 +278,8 @@ function validateTransactionLegs(transactionId) {
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     
+    updateProcessingStatus("Finding transaction details...");
+    
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
     let transactionRow = -1;
@@ -285,6 +302,8 @@ function validateTransactionLegs(transactionId) {
       };
     }
     
+    updateProcessingStatus("Calculating settlement leg totals...");
+    
     // Get all legs for this transaction
     const allLegs = legsSheet.getDataRange().getValues();
     let legTotal = 0;
@@ -299,6 +318,8 @@ function validateTransactionLegs(transactionId) {
     
     // Compare totals
     const isValid = Math.abs(legTotal - transactionAmount) < 0.01; // Allow for small rounding errors
+    
+    updateProcessingStatus("Updating validation status...");
     
     // Update validation status in legs sheet
     for (const row of legRows) {
@@ -336,6 +357,8 @@ function updateInventoryForTransaction(transactionId) {
     const transactions = transactionSheet.getDataRange().getValues();
     let transaction = null;
     
+    updateProcessingStatus("Finding transaction data...");
+    
     for (let i = 1; i < transactions.length; i++) {
       if (transactions[i][0] === transactionId) {
         transaction = {
@@ -355,6 +378,8 @@ function updateInventoryForTransaction(transactionId) {
         message: `Transaction ${transactionId} not found`
       };
     }
+    
+    updateProcessingStatus(`Updating inventory for ${transaction.currency}...`);
     
     // Call inventory update function
     const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
@@ -442,6 +467,8 @@ function getTransactionLegs(transactionId) {
  */
 function processSwapTransaction(swapData) {
   try {
+    updateProcessingStatus("Setting up sell transaction...");
+    
     // Create two linked transactions - one for each currency
     const sellTransaction = {
       date: swapData.date,
@@ -455,6 +482,8 @@ function processSwapTransaction(swapData) {
       staff: swapData.staff,
       notes: `Swap to ${swapData.toCurrency} ${swapData.toAmount} (Swap ID: ${swapData.swapId})`
     };
+    
+    updateProcessingStatus("Setting up buy transaction...");
     
     const buyTransaction = {
       date: swapData.date,
@@ -470,8 +499,13 @@ function processSwapTransaction(swapData) {
     };
     
     // Create both transactions
+    updateProcessingStatus("Processing sell side of swap...");
     const sellResult = createTransaction(sellTransaction);
+    
+    updateProcessingStatus("Processing buy side of swap...");
     const buyResult = createTransaction(buyTransaction);
+    
+    updateProcessingStatus("Finalizing swap transaction...");
     
     // Return results
     if (sellResult.success && buyResult.success) {
@@ -509,6 +543,8 @@ function updateTransaction(transactionId, updateData) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
+    updateProcessingStatus("Finding transaction...");
+    
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
     let rowIndex = -1;
@@ -526,6 +562,8 @@ function updateTransaction(transactionId, updateData) {
         message: `Transaction ${transactionId} not found`
       };
     }
+    
+    updateProcessingStatus("Updating transaction fields...");
     
     // Update fields
     if (updateData.date) {
@@ -585,6 +623,7 @@ function updateTransaction(transactionId, updateData) {
     // Update inventory if needed
     const config = getConfigSettings();
     if (config.autoUpdateInventory === 'TRUE') {
+      updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
     }
     
@@ -672,6 +711,11 @@ function showLoading(message) {
         margin: 20px auto;
         animation: spin 2s linear infinite;
       }
+      #processingStep {
+        margin-top: 10px;
+        font-size: 14px;
+        color: #666;
+      }
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -680,7 +724,16 @@ function showLoading(message) {
   </head>
   <body>
     <div class="loader"></div>
-    <p>${message || 'Loading...'}</p>
+    <p id="processingStatus">${message || 'Loading...'}</p>
+    <p id="processingStep"></p>
+    
+    <script>
+      // Make the dialog accessible to the parent for updates
+      window.onProcessingUpdate = function(status, step) {
+        if (status) document.getElementById('processingStatus').textContent = status;
+        if (step) document.getElementById('processingStep').textContent = step;
+      };
+    </script>
   </body>
 </html>`;
 
@@ -691,4 +744,28 @@ function showLoading(message) {
   SpreadsheetApp.getUi().showModelessDialog(htmlOutput, 'Processing');
   
   return htmlOutput;
+}
+
+/**
+ * Updates the processing status message in the loading dialog
+ * @param {string} status - The new status message to display
+ * @param {string} step - Optional step detail to display
+ */
+function updateProcessingStatus(status, step) {
+  try {
+    // Log processing steps for debugging
+    Logger.log(`Processing: ${status}${step ? ` - ${step}` : ''}`);
+    
+    // In a real implementation, we would need to update the UI
+    // However, Apps Script doesn't allow direct UI updates from server-side code
+    // So we'll just log the status for now
+    
+    // In a more advanced implementation, we could store the status in PropertiesService
+    // and have the client periodically check for updates
+    
+    // For now, we're relying on the showLoading function to create the UI
+  } catch (error) {
+    // Silently fail - this is just for UI feedback and shouldn't stop processing
+    Logger.log(`Error updating processing status: ${error}`);
+  }
 }
