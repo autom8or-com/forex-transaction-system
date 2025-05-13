@@ -12,6 +12,14 @@ const SHEET_CONFIG = 'Config';
 const SHEET_ADJUSTMENTS = 'Adjustments';
 
 /**
+ * Include the progress indicator in HTML templates
+ * @return {string} HTML content of progress indicator
+ */
+function includeProgressIndicator() {
+  return HtmlService.createHtmlOutputFromFile('ProgressIndicator').getContent();
+}
+
+/**
  * Formats a date as YYYY-MM-DD
  * @param {Date} date - The date to format
  * @return {string} Formatted date string
