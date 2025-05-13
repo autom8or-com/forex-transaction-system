@@ -1,17 +1,75 @@
 /**
  * Forex Transaction System - Utilities
  * 
- * Contains utility functions used across the system:
- * - Date handling
- * - Formatting
- * - Validation
- * - Export functions
- * - Sheet management
+ * Contains utility functions and constants used across the system
  */
 
+// Sheet name constants
+const SHEET_TRANSACTIONS = 'Transactions';
+const SHEET_TRANSACTION_LEGS = 'Transaction_Legs';
+const SHEET_INVENTORY = 'Daily_Inventory';
+const SHEET_CONFIG = 'Config';
+const SHEET_ADJUSTMENTS = 'Adjustments';
+
 /**
- * Get the first day of the current month
- * @return {Date} First day of the month
+ * Formats a date as YYYY-MM-DD
+ * @param {Date} date - The date to format
+ * @return {string} Formatted date string
+ */
+function formatDate(date) {
+  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+}
+
+/**
+ * Formats a number with commas and decimal places
+ * @param {number} number - The number to format
+ * @param {number} decimals - Number of decimal places
+ * @return {string} Formatted number string
+ */
+function formatNumber(number, decimals) {
+  return number.toFixed(decimals).replace(/\B(?=(\d{3})+(?!\d))/g, ",");
+}
+
+/**
+ * Gets the current user's email
+ * @return {string} User email
+ */
+function getCurrentUserEmail() {
+  return Session.getActiveUser().getEmail();
+}
+
+/**
+ * Gets the current date as a Date object
+ * @return {Date} Current date
+ */
+function getCurrentDate() {
+  return new Date();
+}
+
+/**
+ * Creates a date-based ID with optional prefix
+ * @param {string} prefix - Optional prefix
+ * @return {string} Date-based ID
+ */
+function createDateBasedId(prefix) {
+  const datePart = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
+  return prefix ? `${prefix}-${datePart}` : datePart;
+}
+
+/**
+ * Gets the most recent Monday date (for weekly reports)
+ * @return {Date} Most recent Monday
+ */
+function getMostRecentMonday() {
+  const today = new Date();
+  const day = today.getDay(); // 0 = Sunday, 1 = Monday, etc.
+  const diff = today.getDate() - day + (day === 0 ? -6 : 1); // Adjust for Sunday
+  return new Date(today.setDate(diff));
+}
+
+/**
+ * Gets the first day of the current month
+ * @return {Date} First day of month
  */
 function getFirstDayOfMonth() {
   const today = new Date();
@@ -19,8 +77,8 @@ function getFirstDayOfMonth() {
 }
 
 /**
- * Get the last day of the current month
- * @return {Date} Last day of the month
+ * Gets the last day of the current month
+ * @return {Date} Last day of month
  */
 function getLastDayOfMonth() {
   const today = new Date();
@@ -28,339 +86,86 @@ function getLastDayOfMonth() {
 }
 
 /**
- * Format a date as YYYY-MM-DD
- * @param {Date} date - The date to format
- * @return {string} Formatted date
+ * Creates an error log entry
+ * @param {string} source - Source of the error
+ * @param {string} message - Error message
+ * @param {Object} data - Optional data related to the error
  */
-function formatDateYMD(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-}
-
-/**
- * Format a date with a friendly display format
- * @param {Date} date - The date to format
- * @return {string} Formatted date
- */
-function formatDateFriendly(date) {
-  return Utilities.formatDate(date, Session.getScriptTimeZone(), 'MMMM d, yyyy');
-}
-
-/**
- * Format a number with commas and 2 decimal places
- * @param {number} num - The number to format
- * @return {string} Formatted number
- */
-function formatCurrency(num) {
-  if (typeof num !== 'number') return num;
-  return num.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2
-  });
-}
-
-/**
- * Validate a transaction object
- * @param {Object} transaction - Transaction data to validate
- * @return {Object} Validation result with success flag and message
- */
-function validateTransaction(transaction) {
-  // Required fields
-  const requiredFields = [
-    'date',
-    'customer',
-    'transactionType',
-    'currency',
-    'amount',
-    'rate'
+function logError(source, message, data) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let logSheet = ss.getSheetByName('Error_Log');
+  
+  // Create log sheet if it doesn't exist
+  if (!logSheet) {
+    logSheet = ss.insertSheet('Error_Log');
+    
+    // Add headers
+    const headers = ['Timestamp', 'Source', 'Message', 'Data', 'User'];
+    logSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+    logSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  }
+  
+  // Add log entry
+  const logEntry = [
+    new Date(),
+    source,
+    message,
+    data ? JSON.stringify(data) : '',
+    Session.getActiveUser().getEmail()
   ];
   
-  // Check required fields
-  for (const field of requiredFields) {
-    if (!transaction[field]) {
-      return {
-        success: false,
-        message: `Missing required field: ${field}`
-      };
-    }
-  }
-  
-  // Validate date
-  if (!(transaction.date instanceof Date) && isNaN(new Date(transaction.date).getTime())) {
-    return {
-      success: false,
-      message: 'Invalid date'
-    };
-  }
-  
-  // Validate transaction type
-  if (!['Buy', 'Sell', 'Swap'].includes(transaction.transactionType)) {
-    return {
-      success: false,
-      message: 'Invalid transaction type. Must be "Buy", "Sell", or "Swap"'
-    };
-  }
-  
-  // Validate currency
-  if (!['USD', 'GBP', 'EUR', 'NAIRA'].includes(transaction.currency)) {
-    return {
-      success: false,
-      message: 'Invalid currency. Must be "USD", "GBP", "EUR", or "NAIRA"'
-    };
-  }
-  
-  // Validate amount and rate
-  if (isNaN(parseFloat(transaction.amount)) || parseFloat(transaction.amount) <= 0) {
-    return {
-      success: false,
-      message: 'Invalid amount. Must be a positive number'
-    };
-  }
-  
-  if (isNaN(parseFloat(transaction.rate)) || parseFloat(transaction.rate) <= 0) {
-    return {
-      success: false,
-      message: 'Invalid rate. Must be a positive number'
-    };
-  }
-  
-  return {
-    success: true,
-    message: 'Transaction validation successful'
-  };
+  logSheet.appendRow(logEntry);
 }
 
 /**
- * Exports transaction data to CSV
- * @param {Date} startDate - Start date for export
- * @param {Date} endDate - End date for export
- * @return {string} CSV data as string
+ * Finds a sheet by name, creates it if it doesn't exist
+ * @param {string} sheetName - The name of the sheet
+ * @param {Array} headers - Optional headers for a new sheet
+ * @return {Sheet} The sheet object
  */
-function exportTransactionsToCSV(startDate, endDate) {
+function getOrCreateSheet(sheetName, headers) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+  let sheet = ss.getSheetByName(sheetName);
   
-  // Format dates for comparison
-  const startDateString = formatDateYMD(startDate);
-  const endDateString = formatDateYMD(endDate);
-  
-  // Get all transactions and headers
-  const data = transactionSheet.getDataRange().getValues();
-  const headers = data[0];
-  const dateColumnIndex = headers.indexOf('Date');
-  
-  // Filter transactions by date
-  const filteredData = [headers];
-  
-  for (let i = 1; i < data.length; i++) {
-    const rowDate = data[i][dateColumnIndex];
-    if (!rowDate) continue;
+  if (!sheet) {
+    // Create the sheet
+    sheet = ss.insertSheet(sheetName);
     
-    const rowDateString = formatDateYMD(rowDate);
-    
-    if (rowDateString >= startDateString && rowDateString <= endDateString) {
-      filteredData.push(data[i]);
+    // Add headers if provided
+    if (headers && headers.length > 0) {
+      sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      sheet.setFrozenRows(1);
     }
-  }
-  
-  // Convert to CSV
-  const csvRows = [];
-  
-  for (const row of filteredData) {
-    // Format dates in the row for CSV
-    const formattedRow = row.map((cell, index) => {
-      if (index === dateColumnIndex && cell instanceof Date) {
-        return formatDateYMD(cell);
-      }
-      
-      // Handle commas in strings
-      if (typeof cell === 'string' && cell.includes(',')) {
-        return `"${cell}"`;
-      }
-      
-      return cell;
-    });
     
-    csvRows.push(formattedRow.join(','));
+    Logger.log(`Created sheet: ${sheetName}`);
   }
   
-  return csvRows.join('\n');
+  return sheet;
 }
 
 /**
- * Creates a backup of the entire spreadsheet as a new file
- * @param {string} suffix - Optional suffix to add to the filename
- * @return {Object} Result with success flag and message
+ * Shows a toast message in the spreadsheet
+ * @param {string} message - The message to show
+ * @param {string} title - Optional title
+ * @param {number} timeout - Optional timeout in seconds
  */
-function createBackup(suffix) {
+function showToast(message, title, timeout) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  ss.toast(message, title || 'Forex System', timeout || 5);
+}
+
+/**
+ * Show a progress indicator with status message
+ * This function provides a consistent way to show loading status across the system
+ * 
+ * @param {string} message - The loading message to display
+ * @param {string} title - Optional title for the dialog
+ * @return {boolean} Success status
+ */
+function showProgressIndicator(message, title) {
   try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const today = new Date();
-    const dateString = formatDateYMD(today);
-    
-    // Create filename
-    const originalName = ss.getName();
-    const backupName = `${originalName} - Backup ${dateString}${suffix ? ' ' + suffix : ''}`;
-    
-    // Create a copy in the same folder
-    const file = DriveApp.getFileById(ss.getId());
-    const folder = file.getParents().next();
-    const backup = file.makeCopy(backupName, folder);
-    
-    return {
-      success: true,
-      message: `Backup created: ${backupName}`,
-      backupId: backup.getId(),
-      backupUrl: backup.getUrl()
-    };
-  } catch (error) {
-    Logger.log(`Error creating backup: ${error}`);
-    return {
-      success: false,
-      message: `Error creating backup: ${error.toString()}`
-    };
-  }
-}
-
-/**
- * Gets column letter for a column index
- * @param {number} columnIndex - 1-based column index
- * @return {string} Column letter(s)
- */
-function getColumnLetter(columnIndex) {
-  let temp, letter = '';
-  
-  while (columnIndex > 0) {
-    temp = (columnIndex - 1) % 26;
-    letter = String.fromCharCode(temp + 65) + letter;
-    columnIndex = (columnIndex - temp - 1) / 26;
-  }
-  
-  return letter;
-}
-
-/**
- * Gets column index for a column letter
- * @param {string} columnLetter - Column letter(s)
- * @return {number} 1-based column index
- */
-function getColumnIndex(columnLetter) {
-  columnLetter = columnLetter.toUpperCase();
-  let sum = 0;
-  
-  for (let i = 0; i < columnLetter.length; i++) {
-    sum = sum * 26;
-    sum = sum + (columnLetter.charCodeAt(i) - 64);
-  }
-  
-  return sum;
-}
-
-/**
- * Adds a QUERY formula to a cell that calculates from the transactions sheet
- * @param {Sheet} sheet - The sheet to add the formula to
- * @param {number} row - The row number (1-based)
- * @param {number} column - The column number (1-based)
- * @param {string} queryString - The query string to use
- */
-function addQueryFormula(sheet, row, column, queryString) {
-  const formula = `=QUERY(${SHEET_TRANSACTIONS}!$A$2:$Z, "${queryString}")`;
-  sheet.getRange(row, column).setFormula(formula);
-}
-
-/**
- * Creates a pivot table from the transactions sheet
- * @param {Object} options - Pivot table options
- * @return {Range} Range containing the pivot table
- */
-function createPivotTable(options) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const targetSheet = ss.getSheetByName(options.targetSheet);
-  
-  // Clear target range if specified
-  if (options.clearRange) {
-    targetSheet.getRange(options.targetRange).clear();
-  }
-  
-  // Get source range
-  const sourceSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
-  const sourceRange = sourceSheet.getDataRange();
-  
-  // Create pivot table
-  const pivotTableParams = {
-    source: sourceRange,
-    destination: targetSheet.getRange(options.targetRange)
-  };
-  
-  const pivotTable = targetSheet.createPivotTable(pivotTableParams);
-  
-  // Add row groups
-  if (options.rows) {
-    options.rows.forEach(row => {
-      pivotTable.addRowGroup(row);
-    });
-  }
-  
-  // Add column groups
-  if (options.columns) {
-    options.columns.forEach(column => {
-      pivotTable.addColumnGroup(column);
-    });
-  }
-  
-  // Add values
-  if (options.values) {
-    options.values.forEach(value => {
-      pivotTable.addPivotValue(
-        value.field,
-        value.summarizeFunction || SpreadsheetApp.PivotTableSummarizeFunction.SUM
-      );
-    });
-  }
-  
-  // Add filters
-  if (options.filters) {
-    options.filters.forEach(filter => {
-      const pivotFilter = pivotTable.addFilter(filter.field);
-      
-      if (filter.filterCriteria) {
-        pivotFilter.setFilterCriteria(filter.filterCriteria);
-      }
-    });
-  }
-  
-  return targetSheet.getRange(options.targetRange);
-}
-
-/**
- * Shows a simple alert message
- * @param {string} title - Alert title
- * @param {string} message - Alert message
- */
-function showAlert(title, message) {
-  const ui = SpreadsheetApp.getUi();
-  ui.alert(title, message, ui.ButtonSet.OK);
-}
-
-/**
- * Shows a confirmation dialog
- * @param {string} title - Dialog title
- * @param {string} message - Dialog message
- * @return {boolean} True if user clicked "Yes", false otherwise
- */
-function showConfirmation(title, message) {
-  const ui = SpreadsheetApp.getUi();
-  const response = ui.alert(title, message, ui.ButtonSet.YES_NO);
-  
-  return response === ui.Button.YES;
-}
-
-/**
- * Shows a loading message in a lightweight dialog
- * @param {string} message - Message to display
- * @return {HtmlOutput} The HTML dialog
- */
-function showLoading(message) {
-  const html = `<!DOCTYPE html>
+    const html = `<!DOCTYPE html>
 <html>
   <head>
     <base target="_top">
@@ -368,7 +173,7 @@ function showLoading(message) {
       body {
         font-family: Arial, sans-serif;
         margin: 0;
-        padding: 15px;
+        padding: 20px;
         text-align: center;
       }
       .loader {
@@ -377,8 +182,13 @@ function showLoading(message) {
         border-top: 8px solid #3498db;
         width: 60px;
         height: 60px;
-        margin: 20px auto;
+        margin: 30px auto;
         animation: spin 2s linear infinite;
+      }
+      .status {
+        margin-top: 20px;
+        font-size: 16px;
+        color: #555;
       }
       @keyframes spin {
         0% { transform: rotate(0deg); }
@@ -388,298 +198,140 @@ function showLoading(message) {
   </head>
   <body>
     <div class="loader"></div>
-    <p>${message || 'Loading...'}</p>
+    <div id="status" class="status">${message || 'Processing...'}</div>
+    
+    <script>
+      function updateStatus(msg) {
+        document.getElementById('status').textContent = msg;
+      }
+    </script>
   </body>
 </html>`;
 
-  const htmlOutput = HtmlService.createHtmlOutput(html)
-    .setWidth(300)
-    .setHeight(200);
-  
-  SpreadsheetApp.getUi().showModelessDialog(htmlOutput, 'Loading');
-  
-  return htmlOutput;
-}
-
-/**
- * Creates a new sheet with basic formatting
- * @param {string} sheetName - Name of the new sheet
- * @param {Array} headers - Array of header titles
- * @param {boolean} activate - Whether to activate the new sheet
- * @return {Sheet} The new sheet
- */
-function createFormattedSheet(sheetName, headers, activate) {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  
-  // Check if sheet already exists
-  let sheet = ss.getSheetByName(sheetName);
-  
-  if (sheet) {
-    // Clear existing sheet
-    sheet.clear();
-  } else {
-    // Create new sheet
-    sheet = ss.insertSheet(sheetName);
-  }
-  
-  // Add headers
-  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
-  
-  // Format headers
-  sheet.getRange(1, 1, 1, headers.length)
-    .setFontWeight('bold')
-    .setBackground('#4285F4')
-    .setFontColor('white');
-  
-  // Freeze header row
-  sheet.setFrozenRows(1);
-  
-  // Auto-resize columns
-  sheet.autoResizeColumns(1, headers.length);
-  
-  // Activate sheet if requested
-  if (activate) {
-    sheet.activate();
-  }
-  
-  return sheet;
-}
-
-/**
- * Gets today's date at midnight
- * @return {Date} Today at midnight
- */
-function getTodayMidnight() {
-  const today = new Date();
-  today.setHours(0, 0, 0, 0);
-  return today;
-}
-
-/**
- * Generates a unique ID with a specified prefix
- * @param {string} prefix - Prefix for the ID
- * @return {string} Unique ID
- */
-function generateUniqueId(prefix) {
-  const timestamp = new Date().getTime().toString(36);
-  const randomStr = Math.random().toString(36).substring(2, 8);
-  
-  return `${prefix}-${timestamp}-${randomStr}`;
-}
-
-/**
- * Checks if two dates are the same day
- * @param {Date} date1 - First date
- * @param {Date} date2 - Second date
- * @return {boolean} True if same day
- */
-function isSameDay(date1, date2) {
-  return (
-    date1.getFullYear() === date2.getFullYear() &&
-    date1.getMonth() === date2.getMonth() &&
-    date1.getDate() === date2.getDate()
-  );
-}
-
-/**
- * Gets the day of the week as a string
- * @param {Date} date - The date
- * @return {string} Day of the week
- */
-function getDayOfWeek(date) {
-  const days = [
-    'Sunday',
-    'Monday',
-    'Tuesday',
-    'Wednesday',
-    'Thursday',
-    'Friday',
-    'Saturday'
-  ];
-  
-  return days[date.getDay()];
-}
-
-/**
- * Parses a CSV string into a 2D array
- * @param {string} csvString - CSV data as string
- * @param {boolean} hasHeader - Whether the CSV has a header row
- * @return {Array} 2D array of CSV data
- */
-function parseCSV(csvString, hasHeader) {
-  const rows = csvString.split('\n');
-  const result = [];
-  
-  for (let i = hasHeader ? 1 : 0; i < rows.length; i++) {
-    // Skip empty rows
-    if (rows[i].trim() === '') continue;
+    const htmlOutput = HtmlService.createHtmlOutput(html)
+      .setWidth(300)
+      .setHeight(200);
     
-    // Handle quoted fields with commas
-    const row = [];
-    let inQuotes = false;
-    let currentField = '';
+    SpreadsheetApp.getUi().showModelessDialog(htmlOutput, title || 'Processing');
     
-    for (let j = 0; j < rows[i].length; j++) {
-      const char = rows[i][j];
+    return true;
+  } catch (error) {
+    Logger.log(`Error showing progress indicator: ${error}`);
+    return false;
+  }
+}
+
+/**
+ * Track processing steps for complex operations
+ * This function logs processing steps for debugging and auditing
+ * 
+ * @param {string} operation - The operation being performed
+ * @param {string} step - The current step
+ * @param {Object} data - Optional data for the step
+ */
+function trackProcessingStep(operation, step, data) {
+  try {
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let trackingSheet = ss.getSheetByName('Processing_Log');
+    
+    // Create tracking sheet if it doesn't exist
+    if (!trackingSheet) {
+      trackingSheet = ss.insertSheet('Processing_Log');
       
-      if (char === '"') {
-        inQuotes = !inQuotes;
-      } else if (char === ',' && !inQuotes) {
-        row.push(currentField);
-        currentField = '';
-      } else {
-        currentField += char;
-      }
+      // Add headers
+      const headers = ['Timestamp', 'Operation', 'Step', 'Data', 'User'];
+      trackingSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      trackingSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
     }
     
-    // Add the last field
-    row.push(currentField);
+    // Add tracking entry
+    const trackingEntry = [
+      new Date(),
+      operation,
+      step,
+      data ? JSON.stringify(data) : '',
+      Session.getActiveUser().getEmail()
+    ];
     
-    result.push(row);
-  }
-  
-  return result;
-}
-
-/**
- * Converts a 2D array to CSV
- * @param {Array} data - 2D array of data
- * @return {string} CSV data as string
- */
-function convertToCSV(data) {
-  const csvRows = [];
-  
-  for (const row of data) {
-    const csvRow = row.map(cell => {
-      // Handle strings with commas
-      if (typeof cell === 'string' && (cell.includes(',') || cell.includes('"'))) {
-        return `"${cell.replace(/"/g, '""')}"`;
-      }
-      return cell;
-    });
+    trackingSheet.appendRow(trackingEntry);
     
-    csvRows.push(csvRow.join(','));
-  }
-  
-  return csvRows.join('\n');
-}
-
-/**
- * Handles errors and logs them
- * @param {Error} error - The error object
- * @param {string} source - Source of the error
- * @param {boolean} showAlert - Whether to show an alert
- */
-function handleError(error, source, showAlert) {
-  const errorMessage = `Error in ${source}: ${error.toString()}`;
-  Logger.log(errorMessage);
-  
-  if (error.stack) {
-    Logger.log(`Stack trace: ${error.stack}`);
-  }
-  
-  if (showAlert) {
-    SpreadsheetApp.getUi().alert('Error', errorMessage, SpreadsheetApp.getUi().ButtonSet.OK);
+    // Log to Apps Script logs as well
+    Logger.log(`Processing: ${operation} - ${step}`);
+    
+    return true;
+  } catch (error) {
+    Logger.log(`Error tracking processing step: ${error}`);
+    return false;
   }
 }
 
 /**
- * Adds a timestamp to a string
- * @param {string} text - The text to add a timestamp to
- * @return {string} Text with timestamp
+ * Calculate the processing progress percentage
+ * @param {number} current - Current step
+ * @param {number} total - Total steps
+ * @return {number} Progress percentage
  */
-function addTimestamp(text) {
-  const now = new Date();
-  const timestamp = Utilities.formatDate(now, Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm:ss');
+function calculateProgress(current, total) {
+  // Ensure valid numbers and prevent division by zero
+  if (!current || !total || total === 0) {
+    return 0;
+  }
   
-  return `[${timestamp}] ${text}`;
+  const progress = Math.round((current / total) * 100);
+  
+  // Ensure progress is between 0 and 100
+  return Math.max(0, Math.min(100, progress));
 }
 
 /**
- * Gets the week number for a date
- * @param {Date} date - The date
- * @return {number} Week number (1-53)
+ * Validate required transaction fields
+ * @param {Object} transactionData - Transaction data to validate
+ * @return {Object} Validation result
  */
-function getWeekNumber(date) {
-  // Clone date to avoid modifying the original
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
-  
-  // Set to nearest Thursday: current date + 4 - current day number
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
-  
-  // Get first day of year
-  const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
-  
-  // Calculate week number: Math.ceil((((date - yearStart) / 86400000) + 1) / 7)
-  const weekNumber = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
-  
-  return weekNumber;
-}
-
-/**
- * Gets the month name for a date
- * @param {Date} date - The date
- * @return {string} Month name
- */
-function getMonthName(date) {
-  const months = [
-    'January',
-    'February',
-    'March',
-    'April',
-    'May',
-    'June',
-    'July',
-    'August',
-    'September',
-    'October',
-    'November',
-    'December'
+function validateTransactionData(transactionData) {
+  // Define required fields based on transaction type
+  const requiredFields = [
+    'date', 
+    'customer', 
+    'transactionType',
+    'currency',
+    'amount',
+    'rate'
   ];
   
-  return months[date.getMonth()];
-}
-
-/**
- * Gets the last day of a month
- * @param {number} year - The year
- * @param {number} month - The month (0-11)
- * @return {number} Last day of the month
- */
-function getLastDayOfMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-/**
- * Gets the quarter for a date
- * @param {Date} date - The date
- * @return {number} Quarter (1-4)
- */
-function getQuarter(date) {
-  return Math.floor(date.getMonth() / 3) + 1;
-}
-
-/**
- * Gets the ISO week date (YYYY-Www) for a date
- * @param {Date} date - The date
- * @return {string} ISO week date
- */
-function getISOWeekDate(date) {
-  // Clone date to avoid modifying the original
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+  // Check for missing fields
+  const missingFields = [];
   
-  // Set to nearest Thursday: current date + 4 - current day number
-  d.setUTCDate(d.getUTCDate() + 4 - (d.getUTCDay() || 7));
+  for (const field of requiredFields) {
+    if (!transactionData[field]) {
+      missingFields.push(field);
+    }
+  }
   
-  // Get year
-  const year = d.getUTCFullYear();
+  if (missingFields.length > 0) {
+    return {
+      valid: false,
+      message: `Missing required fields: ${missingFields.join(', ')}`
+    };
+  }
   
-  // Get first day of year
-  const yearStart = new Date(Date.UTC(year, 0, 1));
+  // Validate data types
+  if (isNaN(transactionData.amount) || transactionData.amount <= 0) {
+    return {
+      valid: false,
+      message: 'Amount must be a positive number'
+    };
+  }
   
-  // Calculate week number: Math.ceil((((date - yearStart) / 86400000) + 1) / 7)
-  const weekNumber = Math.ceil((((d - yearStart) / 86400000) + 1) / 7);
+  if (isNaN(transactionData.rate) || transactionData.rate <= 0) {
+    return {
+      valid: false,
+      message: 'Rate must be a positive number'
+    };
+  }
   
-  // Format: YYYY-Www
-  return `${year}-W${weekNumber.toString().padStart(2, '0')}`;
+  return {
+    valid: true,
+    message: 'Transaction data is valid'
+  };
 }

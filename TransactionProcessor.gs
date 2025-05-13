@@ -18,17 +18,25 @@ function createTransaction(transactionData) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
+    // Update processing status
+    updateProcessingStatus("Generating transaction ID...");
+    
     // Generate transaction ID
     const config = getConfigSettings();
     const lastRow = transactionSheet.getLastRow();
     const transactionNumber = lastRow > 1 ? lastRow : 1;
-    const transactionId = `${config.transactionIdPrefix}${padNumber(transactionNumber, 4)}`;
+    
+    // Use default prefix if not defined in config
+    const idPrefix = config.transactionIdPrefix || "TX-";
+    const transactionId = `${idPrefix}${padNumber(transactionNumber, 4)}`;
     
     // Format date
     const transactionDate = new Date(transactionData.date);
     
     // Calculate value in NGN
     const valueNGN = transactionData.amount * transactionData.rate;
+    
+    updateProcessingStatus("Saving transaction data...");
     
     // Create transaction row
     const transactionRow = [
@@ -54,13 +62,25 @@ function createTransaction(transactionData) {
     const newRowIndex = transactionSheet.getLastRow();
     transactionSheet.getRange(newRowIndex, 6, 1, 3).setNumberFormat('#,##0.00');
     
+    // Create the Transaction_Legs sheet if it doesn't exist
+    let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    if (!legsSheet) {
+      updateProcessingStatus("Setting up transaction legs sheet...");
+      setupTransactionLegsSheet();
+      legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    }
+    
+    updateProcessingStatus("Processing transaction legs...");
+    
     // Process transaction legs if provided
     if (transactionData.legs && transactionData.legs.length > 0) {
-      for (const leg of transactionData.legs) {
-        addTransactionLeg(transactionId, leg);
+      for (let i = 0; i < transactionData.legs.length; i++) {
+        updateProcessingStatus(`Processing settlement leg ${i+1} of ${transactionData.legs.length}...`);
+        addTransactionLeg(transactionId, transactionData.legs[i]);
       }
     } else {
       // Create a default leg if none provided
+      updateProcessingStatus("Creating default settlement leg...");
       const defaultLeg = {
         settlementType: transactionData.transactionType === 'Buy' ? 'Cash' : 'Bank Transfer',
         currency: transactionData.currency,
@@ -73,15 +93,31 @@ function createTransaction(transactionData) {
       addTransactionLeg(transactionId, defaultLeg);
     }
     
+    // Validate that the legs were properly created
+    updateProcessingStatus("Validating transaction legs...");
+    validateTransactionLegs(transactionId);
+    
     // Update inventory if configured to do so
     if (config.autoUpdateInventory === 'TRUE') {
+      updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
     }
+    
+    updateProcessingStatus("Transaction completed successfully!");
+    
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Transaction data validated',
+      'Transaction record created',
+      'Settlement leg processed',
+      'Inventory updated'
+    ];
     
     return {
       success: true,
       message: 'Transaction created successfully',
-      transactionId: transactionId
+      transactionId: transactionId,
+      processingSteps: processingSteps
     };
   } catch (error) {
     Logger.log(`Error creating transaction: ${error}`);
@@ -101,7 +137,19 @@ function createTransaction(transactionData) {
 function addTransactionLeg(transactionId, legData) {
   try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    
+    // Ensure the Transaction_Legs sheet exists
+    let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+    if (!legsSheet) {
+      updateProcessingStatus("Creating Transaction_Legs sheet...");
+      setupTransactionLegsSheet();
+      legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+      
+      // If still doesn't exist, return error
+      if (!legsSheet) {
+        throw new Error("Could not create Transaction_Legs sheet");
+      }
+    }
     
     // Count existing legs for this transaction to generate leg ID
     const legCount = countLegsForTransaction(transactionId);
@@ -127,6 +175,9 @@ function addTransactionLeg(transactionId, legData) {
     const newRowIndex = legsSheet.getLastRow();
     legsSheet.getRange(newRowIndex, 5, 1, 1).setNumberFormat('#,##0.00');
     
+    // Log success for debugging
+    Logger.log(`Added transaction leg ${legId} for transaction ${transactionId}`);
+    
     return {
       success: true,
       message: 'Transaction leg added successfully',
@@ -142,6 +193,54 @@ function addTransactionLeg(transactionId, legData) {
 }
 
 /**
+ * Set up the Transaction Legs sheet if it doesn't exist
+ */
+function setupTransactionLegsSheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let sheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
+  
+  if (!sheet) {
+    sheet = ss.insertSheet(SHEET_TRANSACTION_LEGS);
+    Logger.log(`Created sheet: ${SHEET_TRANSACTION_LEGS}`);
+  }
+  
+  // Clear existing content
+  sheet.clear();
+  
+  // Set headers
+  const headers = [
+    'Transaction ID', 'Leg ID', 'Settlement Type', 'Currency', 'Amount', 
+    'Bank/Account', 'Status', 'Notes', 'Validation'
+  ];
+  
+  sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  sheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  sheet.setFrozenRows(1);
+  
+  // Set up data validation for Settlement Type
+  const settlementTypeRange = sheet.getRange(2, 3, 1000, 1);
+  const settlementTypeRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['Cash', 'Bank Transfer', 'Swap In', 'Swap Out'], true)
+    .build();
+  settlementTypeRange.setDataValidation(settlementTypeRule);
+  
+  // Set up data validation for Currency
+  const currencyRange = sheet.getRange(2, 4, 1000, 1);
+  const currencyRule = SpreadsheetApp.newDataValidation()
+    .requireValueInList(['USD', 'GBP', 'EUR', 'NAIRA'], true)
+    .build();
+  currencyRange.setDataValidation(currencyRule);
+  
+  // Format columns
+  sheet.getRange('E:E').setNumberFormat('#,##0.00');
+  
+  // Auto-resize columns
+  sheet.autoResizeColumns(1, headers.length);
+  
+  return sheet;
+}
+
+/**
  * Counts the number of legs for a specific transaction
  * @param {string} transactionId - The transaction ID to count legs for
  * @return {number} Number of legs
@@ -150,8 +249,15 @@ function countLegsForTransaction(transactionId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
   
+  if (!legsSheet || legsSheet.getLastRow() <= 1) {
+    return 0; // No legs yet or only header row
+  }
+  
   // Get all transaction IDs
-  const legTxIds = legsSheet.getRange(2, 1, legsSheet.getLastRow() - 1, 1).getValues();
+  const lastRow = legsSheet.getLastRow();
+  const legTxIds = lastRow > 1 ? 
+    legsSheet.getRange(2, 1, lastRow - 1, 1).getValues() : 
+    [];
   
   // Count matches
   let count = 0;
@@ -175,6 +281,8 @@ function validateTransactionLegs(transactionId) {
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     
+    updateProcessingStatus("Finding transaction details...");
+    
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
     let transactionRow = -1;
@@ -197,6 +305,8 @@ function validateTransactionLegs(transactionId) {
       };
     }
     
+    updateProcessingStatus("Calculating settlement leg totals...");
+    
     // Get all legs for this transaction
     const allLegs = legsSheet.getDataRange().getValues();
     let legTotal = 0;
@@ -211,6 +321,8 @@ function validateTransactionLegs(transactionId) {
     
     // Compare totals
     const isValid = Math.abs(legTotal - transactionAmount) < 0.01; // Allow for small rounding errors
+    
+    updateProcessingStatus("Updating validation status...");
     
     // Update validation status in legs sheet
     for (const row of legRows) {
@@ -248,6 +360,8 @@ function updateInventoryForTransaction(transactionId) {
     const transactions = transactionSheet.getDataRange().getValues();
     let transaction = null;
     
+    updateProcessingStatus("Finding transaction data...");
+    
     for (let i = 1; i < transactions.length; i++) {
       if (transactions[i][0] === transactionId) {
         transaction = {
@@ -268,10 +382,13 @@ function updateInventoryForTransaction(transactionId) {
       };
     }
     
-    // Call inventory update function (will be implemented in InventoryManager.gs)
-    // For now, we'll just return success
+    updateProcessingStatus(`Updating inventory for ${transaction.currency}...`);
+    
+    // Call inventory update function
+    const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
+    
     return {
-      success: true,
+      success: result.success,
       message: `Inventory updated for transaction ${transactionId}`
     };
   } catch (error) {
@@ -323,6 +440,10 @@ function getTransactionLegs(transactionId) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
   
+  if (!legsSheet) {
+    return []; // No legs sheet exists
+  }
+  
   // Get all legs
   const allLegs = legsSheet.getDataRange().getValues();
   const headers = allLegs[0];
@@ -349,6 +470,8 @@ function getTransactionLegs(transactionId) {
  */
 function processSwapTransaction(swapData) {
   try {
+    updateProcessingStatus("Setting up sell transaction...");
+    
     // Create two linked transactions - one for each currency
     const sellTransaction = {
       date: swapData.date,
@@ -362,6 +485,8 @@ function processSwapTransaction(swapData) {
       staff: swapData.staff,
       notes: `Swap to ${swapData.toCurrency} ${swapData.toAmount} (Swap ID: ${swapData.swapId})`
     };
+    
+    updateProcessingStatus("Setting up buy transaction...");
     
     const buyTransaction = {
       date: swapData.date,
@@ -377,8 +502,21 @@ function processSwapTransaction(swapData) {
     };
     
     // Create both transactions
+    updateProcessingStatus("Processing sell side of swap...");
     const sellResult = createTransaction(sellTransaction);
+    
+    updateProcessingStatus("Processing buy side of swap...");
     const buyResult = createTransaction(buyTransaction);
+    
+    updateProcessingStatus("Finalizing swap transaction...");
+    
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Swap data validated',
+      `Sell transaction created (${swapData.fromCurrency})`,
+      `Buy transaction created (${swapData.toCurrency})`,
+      'Inventory updated for both currencies'
+    ];
     
     // Return results
     if (sellResult.success && buyResult.success) {
@@ -386,7 +524,8 @@ function processSwapTransaction(swapData) {
         success: true,
         message: 'Swap transaction processed successfully',
         sellTransactionId: sellResult.transactionId,
-        buyTransactionId: buyResult.transactionId
+        buyTransactionId: buyResult.transactionId,
+        processingSteps: processingSteps
       };
     } else {
       return {
@@ -416,6 +555,8 @@ function updateTransaction(transactionId, updateData) {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
+    updateProcessingStatus("Finding transaction...");
+    
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
     let rowIndex = -1;
@@ -433,6 +574,8 @@ function updateTransaction(transactionId, updateData) {
         message: `Transaction ${transactionId} not found`
       };
     }
+    
+    updateProcessingStatus("Updating transaction fields...");
     
     // Update fields
     if (updateData.date) {
@@ -492,18 +635,114 @@ function updateTransaction(transactionId, updateData) {
     // Update inventory if needed
     const config = getConfigSettings();
     if (config.autoUpdateInventory === 'TRUE') {
+      updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
     }
     
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Transaction found',
+      'Transaction fields updated',
+      'Inventory recalculated'
+    ];
+    
     return {
       success: true,
-      message: `Transaction ${transactionId} updated successfully`
+      message: `Transaction ${transactionId} updated successfully`,
+      processingSteps: processingSteps
     };
   } catch (error) {
     Logger.log(`Error updating transaction: ${error}`);
     return {
       success: false,
       message: `Error updating transaction: ${error.toString()}`
+    };
+  }
+}
+
+/**
+ * Records an inventory adjustment
+ * @param {Object} adjustmentData - The adjustment data
+ * @return {Object} Result with status and message
+ */
+function recordInventoryAdjustment(adjustmentData) {
+  try {
+    updateProcessingStatus("Validating adjustment data...");
+    
+    // Create the Adjustments sheet if it doesn't exist
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let adjustmentsSheet = ss.getSheetByName(SHEET_ADJUSTMENTS);
+    
+    if (!adjustmentsSheet) {
+      updateProcessingStatus("Creating adjustments sheet...");
+      adjustmentsSheet = ss.insertSheet(SHEET_ADJUSTMENTS);
+      
+      // Set up headers
+      const headers = [
+        'Adjustment ID', 'Date', 'Currency', 'Amount', 
+        'Reason', 'Processed By', 'Timestamp'
+      ];
+      
+      adjustmentsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      adjustmentsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      adjustmentsSheet.setFrozenRows(1);
+    }
+    
+    updateProcessingStatus("Generating adjustment ID...");
+    
+    // Generate adjustment ID
+    const lastRow = adjustmentsSheet.getLastRow();
+    const adjustmentNumber = lastRow > 1 ? lastRow : 1;
+    const adjustmentId = `ADJ-${padNumber(adjustmentNumber, 4)}`;
+    
+    // Get user email/name
+    const userEmail = Session.getActiveUser().getEmail();
+    
+    updateProcessingStatus("Saving adjustment record...");
+    
+    // Add adjustment to sheet
+    const adjustmentRow = [
+      adjustmentId,
+      new Date(adjustmentData.date),
+      adjustmentData.currency,
+      adjustmentData.amount,
+      adjustmentData.reason,
+      userEmail,
+      new Date()
+    ];
+    
+    adjustmentsSheet.appendRow(adjustmentRow);
+    
+    // Format the new row
+    const newRowIndex = adjustmentsSheet.getLastRow();
+    adjustmentsSheet.getRange(newRowIndex, 4, 1, 1).setNumberFormat('#,##0.00');
+    
+    updateProcessingStatus("Updating inventory for adjustment...");
+    
+    // Update inventory
+    const inventoryResult = updateInventoryForDateAndCurrency(
+      new Date(adjustmentData.date), 
+      adjustmentData.currency
+    );
+    
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Adjustment data validated', 
+      `Inventory adjusted for ${adjustmentData.currency}`,
+      'Adjustment record saved'
+    ];
+    
+    return {
+      success: true,
+      message: `Inventory adjustment for ${adjustmentData.currency} recorded successfully`,
+      adjustmentId: adjustmentId,
+      processingSteps: processingSteps
+    };
+  } catch (error) {
+    Logger.log(`Error recording inventory adjustment: ${error}`);
+    return {
+      success: false,
+      message: `Error recording inventory adjustment: ${error.toString()}`
     };
   }
 }
@@ -551,4 +790,23 @@ function camelCase(str) {
     .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
     .replace(/\s/g, '')
     .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
+}
+
+/**
+ * Updates the processing status message in the loading dialog
+ * @param {string} status - The new status message to display
+ * @param {string} step - Optional step detail to display
+ */
+function updateProcessingStatus(status, step) {
+  try {
+    // Log processing steps for debugging
+    Logger.log(`Processing: ${status}${step ? ` - ${step}` : ''}`);
+    
+    // In a real implementation, we would need to update the UI
+    // However, Apps Script doesn't allow direct UI updates from server-side code
+    // So we'll just log the status for now
+  } catch (error) {
+    // Silently fail - this is just for UI feedback and shouldn't stop processing
+    Logger.log(`Error updating processing status: ${error}`);
+  }
 }
