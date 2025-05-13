@@ -87,6 +87,9 @@
         grid-gap: 10px;
       }
     </style>
+    
+    <!-- Include progress indicator component -->
+    <?!= includeProgressIndicator(); ?>
   </head>
   <body>
     <h2>Transaction Settlement</h2>
@@ -114,8 +117,8 @@
       <button type="button" class="add-settlement" onclick="addSettlement()">+ Add Settlement Method</button>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Complete Transaction</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit" id="submitButton">Complete Transaction</button>
       </div>
     </form>
     
@@ -291,6 +294,15 @@
           return;
         }
         
+        // Show loading overlay
+        showLoadingOverlay("Processing settlements...");
+        
+        // Initialize processing steps for this transaction type
+        initTransactionProcessing('settlement');
+        
+        // Update processing step
+        updateProcessingStep("Validating settlement data...");
+        
         // Submit data
         const formData = {
           settlements: settlements
@@ -298,40 +310,10 @@
         
         // Send data to server
         google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
+          .withSuccessHandler(handleFormSuccess)
+          .withFailureHandler(handleFormFailure)
           .processSettlementForm(formData);
       });
-      
-      // Success handler
-      function onSuccess(result) {
-        if (result.success) {
-          // Show success message
-          const messageDiv = document.getElementById('message');
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'success';
-          messageDiv.style.display = 'block';
-          
-          // Close the dialog after a delay
-          setTimeout(function() {
-            google.script.host.close();
-          }, 2000);
-        } else {
-          // Show error message
-          const messageDiv = document.getElementById('message');
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'error';
-          messageDiv.style.display = 'block';
-        }
-      }
-      
-      // Failure handler
-      function onFailure(error) {
-        const messageDiv = document.getElementById('message');
-        messageDiv.innerHTML = "Error: " + error.message;
-        messageDiv.className = 'error';
-        messageDiv.style.display = 'block';
-      }
     </script>
   </body>
 </html>
