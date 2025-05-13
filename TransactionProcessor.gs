@@ -87,7 +87,12 @@ function createTransaction(transactionData) {
     if (transactionData.legs && transactionData.legs.length > 0) {
       for (let i = 0; i < transactionData.legs.length; i++) {
         updateProcessingStatus(`Processing settlement leg ${i+1} of ${transactionData.legs.length}...`);
-        addTransactionLeg(transactionId, transactionData.legs[i]);
+        const leg = transactionData.legs[i];
+        // Make sure amount is properly formatted as a number
+        if (typeof leg.amount === 'string') {
+          leg.amount = parseFloat(leg.amount);
+        }
+        addTransactionLeg(transactionId, leg);
       }
       addProcessingStep(`${transactionData.legs.length} settlement legs processed`);
     } else {
