@@ -15,9 +15,6 @@
  */
 function createTransaction(transactionData) {
   try {
-    // Show loading indicator while processing
-    showLoading("Creating transaction...");
-    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
@@ -108,10 +105,19 @@ function createTransaction(transactionData) {
     
     updateProcessingStatus("Transaction completed successfully!");
     
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Transaction data validated',
+      'Transaction record created',
+      'Settlement leg processed',
+      'Inventory updated'
+    ];
+    
     return {
       success: true,
       message: 'Transaction created successfully',
-      transactionId: transactionId
+      transactionId: transactionId,
+      processingSteps: processingSteps
     };
   } catch (error) {
     Logger.log(`Error creating transaction: ${error}`);
@@ -119,9 +125,6 @@ function createTransaction(transactionData) {
       success: false,
       message: `Error creating transaction: ${error.toString()}`
     };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Transaction processing completed", "Complete", 3);
   }
 }
 
@@ -507,13 +510,22 @@ function processSwapTransaction(swapData) {
     
     updateProcessingStatus("Finalizing swap transaction...");
     
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Swap data validated',
+      `Sell transaction created (${swapData.fromCurrency})`,
+      `Buy transaction created (${swapData.toCurrency})`,
+      'Inventory updated for both currencies'
+    ];
+    
     // Return results
     if (sellResult.success && buyResult.success) {
       return {
         success: true,
         message: 'Swap transaction processed successfully',
         sellTransactionId: sellResult.transactionId,
-        buyTransactionId: buyResult.transactionId
+        buyTransactionId: buyResult.transactionId,
+        processingSteps: processingSteps
       };
     } else {
       return {
@@ -627,15 +639,110 @@ function updateTransaction(transactionId, updateData) {
       updateInventoryForTransaction(transactionId);
     }
     
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Transaction found',
+      'Transaction fields updated',
+      'Inventory recalculated'
+    ];
+    
     return {
       success: true,
-      message: `Transaction ${transactionId} updated successfully`
+      message: `Transaction ${transactionId} updated successfully`,
+      processingSteps: processingSteps
     };
   } catch (error) {
     Logger.log(`Error updating transaction: ${error}`);
     return {
       success: false,
       message: `Error updating transaction: ${error.toString()}`
+    };
+  }
+}
+
+/**
+ * Records an inventory adjustment
+ * @param {Object} adjustmentData - The adjustment data
+ * @return {Object} Result with status and message
+ */
+function recordInventoryAdjustment(adjustmentData) {
+  try {
+    updateProcessingStatus("Validating adjustment data...");
+    
+    // Create the Adjustments sheet if it doesn't exist
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    let adjustmentsSheet = ss.getSheetByName(SHEET_ADJUSTMENTS);
+    
+    if (!adjustmentsSheet) {
+      updateProcessingStatus("Creating adjustments sheet...");
+      adjustmentsSheet = ss.insertSheet(SHEET_ADJUSTMENTS);
+      
+      // Set up headers
+      const headers = [
+        'Adjustment ID', 'Date', 'Currency', 'Amount', 
+        'Reason', 'Processed By', 'Timestamp'
+      ];
+      
+      adjustmentsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+      adjustmentsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+      adjustmentsSheet.setFrozenRows(1);
+    }
+    
+    updateProcessingStatus("Generating adjustment ID...");
+    
+    // Generate adjustment ID
+    const lastRow = adjustmentsSheet.getLastRow();
+    const adjustmentNumber = lastRow > 1 ? lastRow : 1;
+    const adjustmentId = `ADJ-${padNumber(adjustmentNumber, 4)}`;
+    
+    // Get user email/name
+    const userEmail = Session.getActiveUser().getEmail();
+    
+    updateProcessingStatus("Saving adjustment record...");
+    
+    // Add adjustment to sheet
+    const adjustmentRow = [
+      adjustmentId,
+      new Date(adjustmentData.date),
+      adjustmentData.currency,
+      adjustmentData.amount,
+      adjustmentData.reason,
+      userEmail,
+      new Date()
+    ];
+    
+    adjustmentsSheet.appendRow(adjustmentRow);
+    
+    // Format the new row
+    const newRowIndex = adjustmentsSheet.getLastRow();
+    adjustmentsSheet.getRange(newRowIndex, 4, 1, 1).setNumberFormat('#,##0.00');
+    
+    updateProcessingStatus("Updating inventory for adjustment...");
+    
+    // Update inventory
+    const inventoryResult = updateInventoryForDateAndCurrency(
+      new Date(adjustmentData.date), 
+      adjustmentData.currency
+    );
+    
+    // List the processing steps to pass back to the client
+    const processingSteps = [
+      'Adjustment data validated', 
+      `Inventory adjusted for ${adjustmentData.currency}`,
+      'Adjustment record saved'
+    ];
+    
+    return {
+      success: true,
+      message: `Inventory adjustment for ${adjustmentData.currency} recorded successfully`,
+      adjustmentId: adjustmentId,
+      processingSteps: processingSteps
+    };
+  } catch (error) {
+    Logger.log(`Error recording inventory adjustment: ${error}`);
+    return {
+      success: false,
+      message: `Error recording inventory adjustment: ${error.toString()}`
     };
   }
 }
@@ -686,67 +793,6 @@ function camelCase(str) {
 }
 
 /**
- * Shows a loading message in a lightweight dialog
- * @param {string} message - Message to display
- * @return {HtmlOutput} The HTML dialog
- */
-function showLoading(message) {
-  const html = `<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 15px;
-        text-align: center;
-      }
-      .loader {
-        border: 8px solid #f3f3f3;
-        border-radius: 50%;
-        border-top: 8px solid #3498db;
-        width: 60px;
-        height: 60px;
-        margin: 20px auto;
-        animation: spin 2s linear infinite;
-      }
-      #processingStep {
-        margin-top: 10px;
-        font-size: 14px;
-        color: #666;
-      }
-      @keyframes spin {
-        0% { transform: rotate(0deg); }
-        100% { transform: rotate(360deg); }
-      }
-    </style>
-  </head>
-  <body>
-    <div class="loader"></div>
-    <p id="processingStatus">${message || 'Loading...'}</p>
-    <p id="processingStep"></p>
-    
-    <script>
-      // Make the dialog accessible to the parent for updates
-      window.onProcessingUpdate = function(status, step) {
-        if (status) document.getElementById('processingStatus').textContent = status;
-        if (step) document.getElementById('processingStep').textContent = step;
-      };
-    </script>
-  </body>
-</html>`;
-
-  const htmlOutput = HtmlService.createHtmlOutput(html)
-    .setWidth(300)
-    .setHeight(200);
-  
-  SpreadsheetApp.getUi().showModelessDialog(htmlOutput, 'Processing');
-  
-  return htmlOutput;
-}
-
-/**
  * Updates the processing status message in the loading dialog
  * @param {string} status - The new status message to display
  * @param {string} step - Optional step detail to display
@@ -759,11 +805,6 @@ function updateProcessingStatus(status, step) {
     // In a real implementation, we would need to update the UI
     // However, Apps Script doesn't allow direct UI updates from server-side code
     // So we'll just log the status for now
-    
-    // In a more advanced implementation, we could store the status in PropertiesService
-    // and have the client periodically check for updates
-    
-    // For now, we're relying on the showLoading function to create the UI
   } catch (error) {
     // Silently fail - this is just for UI feedback and shouldn't stop processing
     Logger.log(`Error updating processing status: ${error}`);
