@@ -8,6 +8,10 @@
  * - Calculating transaction values
  */
 
+// Store processing steps for the current operation
+let currentProcessingSteps = [];
+let currentStepIndex = 0;
+
 /**
  * Creates a new transaction from form data
  * @param {Object} transactionData - Transaction data from form
@@ -15,6 +19,9 @@
  */
 function createTransaction(transactionData) {
   try {
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
@@ -37,6 +44,7 @@ function createTransaction(transactionData) {
     const valueNGN = transactionData.amount * transactionData.rate;
     
     updateProcessingStatus("Saving transaction data...");
+    addProcessingStep("Transaction data validated");
     
     // Create transaction row
     const transactionRow = [
@@ -62,6 +70,9 @@ function createTransaction(transactionData) {
     const newRowIndex = transactionSheet.getLastRow();
     transactionSheet.getRange(newRowIndex, 6, 1, 3).setNumberFormat('#,##0.00');
     
+    updateProcessingStatus("Transaction record created successfully");
+    addProcessingStep("Transaction record created");
+    
     // Create the Transaction_Legs sheet if it doesn't exist
     let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
     if (!legsSheet) {
@@ -78,6 +89,7 @@ function createTransaction(transactionData) {
         updateProcessingStatus(`Processing settlement leg ${i+1} of ${transactionData.legs.length}...`);
         addTransactionLeg(transactionId, transactionData.legs[i]);
       }
+      addProcessingStep(`${transactionData.legs.length} settlement legs processed`);
     } else {
       // Create a default leg if none provided
       updateProcessingStatus("Creating default settlement leg...");
@@ -91,6 +103,7 @@ function createTransaction(transactionData) {
       };
       
       addTransactionLeg(transactionId, defaultLeg);
+      addProcessingStep("Default settlement leg created");
     }
     
     // Validate that the legs were properly created
@@ -101,17 +114,14 @@ function createTransaction(transactionData) {
     if (config.autoUpdateInventory === 'TRUE') {
       updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
+      addProcessingStep("Inventory updated");
     }
     
     updateProcessingStatus("Transaction completed successfully!");
+    addProcessingStep("Transaction completed successfully");
     
-    // List the processing steps to pass back to the client
-    const processingSteps = [
-      'Transaction data validated',
-      'Transaction record created',
-      'Settlement leg processed',
-      'Inventory updated'
-    ];
+    // Get the processing steps to return to client
+    const processingSteps = getProcessingSteps();
     
     return {
       success: true,
@@ -329,6 +339,13 @@ function validateTransactionLegs(transactionId) {
       legsSheet.getRange(row, 9).setValue(isValid ? '✓' : '❌ Mismatch');
     }
     
+    // Add a processing step
+    if (isValid) {
+      addProcessingStep("Transaction legs validated successfully");
+    } else {
+      addProcessingStep("Transaction legs validation failed - amount mismatch");
+    }
+    
     return {
       success: isValid,
       message: isValid ? 
@@ -470,7 +487,11 @@ function getTransactionLegs(transactionId) {
  */
 function processSwapTransaction(swapData) {
   try {
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    
     updateProcessingStatus("Setting up sell transaction...");
+    addProcessingStep("Swap data validated");
     
     // Create two linked transactions - one for each currency
     const sellTransaction = {
@@ -504,19 +525,18 @@ function processSwapTransaction(swapData) {
     // Create both transactions
     updateProcessingStatus("Processing sell side of swap...");
     const sellResult = createTransaction(sellTransaction);
+    addProcessingStep(`Sell transaction created (${swapData.fromCurrency})`);
     
     updateProcessingStatus("Processing buy side of swap...");
     const buyResult = createTransaction(buyTransaction);
+    addProcessingStep(`Buy transaction created (${swapData.toCurrency})`);
     
     updateProcessingStatus("Finalizing swap transaction...");
+    addProcessingStep("Inventory updated for both currencies");
+    addProcessingStep("Swap transaction completed successfully");
     
-    // List the processing steps to pass back to the client
-    const processingSteps = [
-      'Swap data validated',
-      `Sell transaction created (${swapData.fromCurrency})`,
-      `Buy transaction created (${swapData.toCurrency})`,
-      'Inventory updated for both currencies'
-    ];
+    // Get the processing steps
+    const processingSteps = getProcessingSteps();
     
     // Return results
     if (sellResult.success && buyResult.success) {
@@ -532,7 +552,8 @@ function processSwapTransaction(swapData) {
         success: false,
         message: 'Error processing swap transaction',
         sellResult: sellResult,
-        buyResult: buyResult
+        buyResult: buyResult,
+        processingSteps: processingSteps
       };
     }
   } catch (error) {
@@ -552,10 +573,14 @@ function processSwapTransaction(swapData) {
  */
 function updateTransaction(transactionId, updateData) {
   try {
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
     updateProcessingStatus("Finding transaction...");
+    addProcessingStep("Transaction lookup initiated");
     
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
@@ -571,10 +596,12 @@ function updateTransaction(transactionId, updateData) {
     if (rowIndex === -1) {
       return {
         success: false,
-        message: `Transaction ${transactionId} not found`
+        message: `Transaction ${transactionId} not found`,
+        processingSteps: getProcessingSteps()
       };
     }
     
+    addProcessingStep("Transaction found");
     updateProcessingStatus("Updating transaction fields...");
     
     // Update fields
@@ -632,19 +659,21 @@ function updateTransaction(transactionId, updateData) {
       transactionSheet.getRange(rowIndex, 13).setValue(updateData.notes);
     }
     
+    addProcessingStep("Transaction fields updated");
+    
     // Update inventory if needed
     const config = getConfigSettings();
     if (config.autoUpdateInventory === 'TRUE') {
       updateProcessingStatus("Updating inventory...");
       updateInventoryForTransaction(transactionId);
+      addProcessingStep("Inventory recalculated");
     }
     
-    // List the processing steps to pass back to the client
-    const processingSteps = [
-      'Transaction found',
-      'Transaction fields updated',
-      'Inventory recalculated'
-    ];
+    updateProcessingStatus("Update completed successfully");
+    addProcessingStep("Transaction update completed");
+    
+    // Get the processing steps
+    const processingSteps = getProcessingSteps();
     
     return {
       success: true,
@@ -655,7 +684,8 @@ function updateTransaction(transactionId, updateData) {
     Logger.log(`Error updating transaction: ${error}`);
     return {
       success: false,
-      message: `Error updating transaction: ${error.toString()}`
+      message: `Error updating transaction: ${error.toString()}`,
+      processingSteps: getProcessingSteps()
     };
   }
 }
@@ -667,7 +697,11 @@ function updateTransaction(transactionId, updateData) {
  */
 function recordInventoryAdjustment(adjustmentData) {
   try {
+    // Initialize processing steps tracking
+    initializeProcessingSteps();
+    
     updateProcessingStatus("Validating adjustment data...");
+    addProcessingStep("Adjustment data validated");
     
     // Create the Adjustments sheet if it doesn't exist
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -685,7 +719,6 @@ function recordInventoryAdjustment(adjustmentData) {
       
       adjustmentsSheet.getRange(1, 1, 1, headers.length).setValues([headers]);
       adjustmentsSheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
-      adjustmentsSheet.setFrozenRows(1);
     }
     
     updateProcessingStatus("Generating adjustment ID...");
@@ -717,6 +750,7 @@ function recordInventoryAdjustment(adjustmentData) {
     const newRowIndex = adjustmentsSheet.getLastRow();
     adjustmentsSheet.getRange(newRowIndex, 4, 1, 1).setNumberFormat('#,##0.00');
     
+    addProcessingStep("Adjustment record saved");
     updateProcessingStatus("Updating inventory for adjustment...");
     
     // Update inventory
@@ -725,12 +759,12 @@ function recordInventoryAdjustment(adjustmentData) {
       adjustmentData.currency
     );
     
-    // List the processing steps to pass back to the client
-    const processingSteps = [
-      'Adjustment data validated', 
-      `Inventory adjusted for ${adjustmentData.currency}`,
-      'Adjustment record saved'
-    ];
+    addProcessingStep(`Inventory adjusted for ${adjustmentData.currency}`);
+    updateProcessingStatus("Adjustment completed successfully!");
+    addProcessingStep("Adjustment completed successfully");
+    
+    // Get the processing steps
+    const processingSteps = getProcessingSteps();
     
     return {
       success: true,
@@ -742,9 +776,38 @@ function recordInventoryAdjustment(adjustmentData) {
     Logger.log(`Error recording inventory adjustment: ${error}`);
     return {
       success: false,
-      message: `Error recording inventory adjustment: ${error.toString()}`
+      message: `Error recording inventory adjustment: ${error.toString()}`,
+      processingSteps: getProcessingSteps()
     };
   }
+}
+
+/**
+ * Initialize the processing steps tracking
+ */
+function initializeProcessingSteps() {
+  currentProcessingSteps = [];
+  currentStepIndex = 0;
+}
+
+/**
+ * Add a processing step to the current operation
+ * @param {string} step - The step description
+ */
+function addProcessingStep(step) {
+  currentProcessingSteps.push(step);
+  currentStepIndex++;
+  
+  // Also log the step for debugging
+  Logger.log(`Processing step ${currentStepIndex}: ${step}`);
+}
+
+/**
+ * Get the current processing steps
+ * @return {Array} Array of processing step descriptions
+ */
+function getProcessingSteps() {
+  return currentProcessingSteps;
 }
 
 /**
@@ -802,9 +865,12 @@ function updateProcessingStatus(status, step) {
     // Log processing steps for debugging
     Logger.log(`Processing: ${status}${step ? ` - ${step}` : ''}`);
     
-    // In a real implementation, we would need to update the UI
+    // Note: In a real implementation, we would need to update the UI
     // However, Apps Script doesn't allow direct UI updates from server-side code
-    // So we'll just log the status for now
+    // Instead, we track the steps and return them in the response to be displayed by client-side code
+    
+    // We don't add every status update as a step, as that would be too granular
+    // Steps are added explicitly via addProcessingStep()
   } catch (error) {
     // Silently fail - this is just for UI feedback and shouldn't stop processing
     Logger.log(`Error updating processing status: ${error}`);
