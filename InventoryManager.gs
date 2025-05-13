@@ -1,789 +1,567 @@
 /**
  * Forex Transaction System - Inventory Manager
  * 
- * Handles all currency inventory management including:
- * - Calculating daily balances
- * - Tracking running balances
- * - Reconciling transactions with inventory
+ * Handles all inventory-related operations including:
+ * - Daily inventory calculations
+ * - Inventory adjustments
+ * - Reconciliation
  */
-
-/**
- * Updates the entire inventory for a specified date range
- * If no range is provided, updates for the current date
- * @param {Date} startDate - Optional start date
- * @param {Date} endDate - Optional end date
- * @return {Object} Result with status and message
- */
-function updateInventoryForDateRange(startDate, endDate) {
-  try {
-    // Show loading indicator for this operation
-    showLoading("Updating inventory...");
-    
-    // Default to today if no dates provided
-    const start = startDate || new Date();
-    start.setHours(0, 0, 0, 0); // Start of day
-    
-    const end = endDate || new Date();
-    end.setHours(23, 59, 59, 999); // End of day
-    
-    const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
-    
-    // Get all dates in the range
-    updateProcessingStatus("Calculating date range...");
-    const dateRange = getDateRange(start, end);
-    
-    // For each date, update inventory for all currencies
-    let currentDate = 1;
-    const totalDates = dateRange.length;
-    
-    for (const date of dateRange) {
-      const dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      updateProcessingStatus(`Processing date ${currentDate} of ${totalDates}`, `Date: ${dateStr}`);
-      
-      for (let i = 0; i < currencies.length; i++) {
-        const currency = currencies[i];
-        updateProcessingStatus(`Processing date ${currentDate} of ${totalDates}`, `Currency: ${currency}`);
-        updateInventoryForDateAndCurrency(date, currency);
-      }
-      
-      currentDate++;
-    }
-    
-    // Final update to dashboard
-    updateProcessingStatus("Updating dashboard...");
-    updateDashboardInventory();
-    
-    // Update running balances
-    updateProcessingStatus("Updating running balances...");
-    updateRunningBalances();
-    
-    return {
-      success: true,
-      message: `Inventory updated successfully for ${dateRange.length} dates`
-    };
-  } catch (error) {
-    Logger.log(`Error updating inventory: ${error}`);
-    return {
-      success: false,
-      message: `Error updating inventory: ${error.toString()}`
-    };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Inventory update completed", "Complete", 3);
-  }
-}
-
-/**
- * Updates inventory based on a specific transaction
- * Properly implemented version that actually updates the inventory
- * @param {string} transactionId - The transaction ID
- * @return {Object} Result with status and message
- */
-function updateInventoryForTransaction(transactionId) {
-  try {
-    // Start with a loading indicator for long operations
-    showLoading("Updating inventory...");
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
-    
-    // Find the transaction
-    updateProcessingStatus("Finding transaction details...");
-    
-    const transactions = transactionSheet.getDataRange().getValues();
-    const headers = transactions[0];
-    const idIndex = 0; // Transaction ID is always the first column
-    const dateIndex = headers.indexOf('Date');
-    const typeIndex = headers.indexOf('Transaction Type');
-    const currencyIndex = headers.indexOf('Currency');
-    const amountIndex = headers.indexOf('Amount');
-    
-    let transaction = null;
-    
-    for (let i = 1; i < transactions.length; i++) {
-      if (transactions[i][idIndex] === transactionId) {
-        transaction = {
-          id: transactions[i][idIndex],
-          date: transactions[i][dateIndex],
-          type: transactions[i][typeIndex],
-          currency: transactions[i][currencyIndex],
-          amount: parseFloat(transactions[i][amountIndex])
-        };
-        break;
-      }
-    }
-    
-    if (!transaction) {
-      return {
-        success: false,
-        message: `Transaction ${transactionId} not found`
-      };
-    }
-    
-    // Update inventory for the transaction's date and currency
-    updateProcessingStatus(`Updating inventory for ${transaction.currency}...`);
-    const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
-    
-    // Update dashboard inventory
-    updateProcessingStatus("Updating dashboard display...");
-    updateDashboardInventory();
-    
-    // Update running balances
-    updateProcessingStatus("Updating running balances...");
-    updateRunningBalances();
-    
-    return {
-      success: result.success,
-      message: `Inventory updated for transaction ${transactionId}`,
-      details: result
-    };
-  } catch (error) {
-    Logger.log(`Error updating inventory for transaction: ${error}`);
-    return {
-      success: false,
-      message: `Error updating inventory: ${error.toString()}`
-    };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Inventory update completed", "Complete", 3);
-  }
-}
 
 /**
  * Updates inventory for a specific date and currency
- * @param {Date} date - The date to update
+ * @param {Date} date - The date to update inventory for
  * @param {string} currency - The currency to update
- * @return {Object} Result with status and message
+ * @return {Object} Update result
  */
 function updateInventoryForDateAndCurrency(date, currency) {
   try {
+    // Track step for processing
+    trackProcessingStep("Inventory Update", "Starting update for " + currency, { date: formatDate(date) });
+    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
-    const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
-    // Format date to string for comparison
-    const dateString = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    
-    updateProcessingStatus("Finding transactions for date and currency...");
-    
-    // Get all transactions for this date and currency
-    const transactions = transactionSheet.getDataRange().getValues();
-    
-    // Transaction indices: 1=Date, 3=Type, 4=Currency, 5=Amount
-    let purchases = 0;
-    let sales = 0;
-    
-    for (let i = 1; i < transactions.length; i++) {
-      const txDate = transactions[i][1];
-      if (!txDate) continue;
-      
-      const txDateString = Utilities.formatDate(txDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
-      if (txDateString === dateString && transactions[i][4] === currency) {
-        const type = transactions[i][3];
-        const amount = Number(transactions[i][5]);
-        
-        if (type === 'Buy') {
-          purchases += amount;
-        } else if (type === 'Sell') {
-          sales += amount;
-        }
-        // Note: Swap transactions should already be recorded as Buy/Sell pairs
-      }
+    // Ensure the inventory sheet exists
+    let inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+    if (!inventorySheet) {
+      trackProcessingStep("Inventory Update", "Creating inventory sheet", { currency: currency });
+      setupInventorySheet();
+      inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
     }
     
-    updateProcessingStatus("Creating or updating inventory entry...");
+    // Format date for searching
+    const dateFormatted = formatDate(date);
     
-    // Get or create inventory entry for this date and currency
-    const inventoryEntry = findOrCreateInventoryEntry(date, currency);
-    if (!inventoryEntry.success) {
-      return inventoryEntry;
-    }
+    trackProcessingStep("Inventory Update", "Looking for existing inventory record", 
+      { date: dateFormatted, currency: currency });
     
-    const { rowIndex, openingBalance } = inventoryEntry;
-    
-    // Update inventory
-    inventorySheet.getRange(rowIndex, 4).setValue(purchases); // Purchases column
-    inventorySheet.getRange(rowIndex, 5).setValue(sales); // Sales column
-    
-    // Closing balance is calculated by the sheet formula
-    
-    return {
-      success: true,
-      message: `Inventory updated for ${currency} on ${dateString}`,
-      date: dateString,
-      currency: currency,
-      purchases: purchases,
-      sales: sales,
-      openingBalance: openingBalance
-    };
-  } catch (error) {
-    Logger.log(`Error updating inventory for ${currency} on ${date}: ${error}`);
-    return {
-      success: false,
-      message: `Error updating inventory: ${error.toString()}`
-    };
-  }
-}
-
-/**
- * Finds or creates an inventory entry for a specific date and currency
- * @param {Date} date - The date to find or create
- * @param {string} currency - The currency to find or create
- * @return {Object} Result with rowIndex and other data
- */
-function findOrCreateInventoryEntry(date, currency) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
-    
-    // Format date to string for comparison
-    const dateString = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    
-    // Get all inventory entries
-    const inventory = inventorySheet.getDataRange().getValues();
-    
-    // Check if entry exists
+    // Check if there's an inventory entry for this date and currency
+    const inventoryData = inventorySheet.getDataRange().getValues();
     let rowIndex = -1;
-    for (let i = 1; i < inventory.length; i++) {
-      if (!inventory[i][0]) continue; // Skip empty rows
+    
+    for (let i = 1; i < inventoryData.length; i++) {
+      const rowDate = formatDate(inventoryData[i][0]);
+      const rowCurrency = inventoryData[i][1];
       
-      const entryDate = inventory[i][0];
-      const entryDateString = Utilities.formatDate(entryDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
-      if (entryDateString === dateString && inventory[i][1] === currency) {
+      if (rowDate === dateFormatted && rowCurrency === currency) {
         rowIndex = i + 1; // +1 because array is 0-based but sheet is 1-based
         break;
       }
     }
     
-    // If entry doesn't exist, create it
-    if (rowIndex === -1) {
-      updateProcessingStatus("Entry not found, calculating previous day balance...");
+    // Find previous day closing for opening balance
+    trackProcessingStep("Inventory Update", "Finding previous day closing balance", 
+      { date: dateFormatted, currency: currency });
+    
+    const previousDayClosing = getPreviousDayClosing(date, currency);
+    
+    // Get purchases and sales for this date
+    trackProcessingStep("Inventory Update", "Calculating purchases and sales", 
+      { date: dateFormatted, currency: currency });
+    
+    const transactions = getTransactionsForDate(date, currency);
+    
+    // Calculate closing balance
+    const openingBalance = previousDayClosing.amount;
+    const purchases = transactions.purchases;
+    const sales = transactions.sales;
+    const adjustments = getAdjustmentsForDate(date, currency);
+    const closingBalance = openingBalance + purchases - sales + adjustments;
+    
+    trackProcessingStep("Inventory Update", "Calculated inventory values", 
+      { 
+        opening: openingBalance,
+        purchases: purchases,
+        sales: sales,
+        adjustments: adjustments,
+        closing: closingBalance
+      });
+    
+    // Update or create inventory entry
+    if (rowIndex > 0) {
+      // Update existing entry
+      inventorySheet.getRange(rowIndex, 3).setValue(openingBalance); // Opening Balance
+      inventorySheet.getRange(rowIndex, 5).setValue(purchases); // Purchases
+      inventorySheet.getRange(rowIndex, 7).setValue(sales); // Sales
+      inventorySheet.getRange(rowIndex, 9).setValue(adjustments); // Adjustments
+      inventorySheet.getRange(rowIndex, 10).setValue(closingBalance); // Closing Balance
       
-      // Find the closing balance from the previous date
-      const previousDayBalance = findPreviousDayClosingBalance(date, currency);
+      trackProcessingStep("Inventory Update", "Updated existing inventory record", 
+        { rowIndex: rowIndex });
+    } else {
+      // Create new entry
+      const inventoryRow = [
+        new Date(date), // Date
+        currency, // Currency
+        openingBalance, // Opening Balance
+        previousDayClosing.source, // Opening Balance Source
+        purchases, // Purchases
+        `=QUERY(${SHEET_TRANSACTIONS}!$A$2:$K$1000, "SELECT SUM(F) WHERE E='${currency}' AND B=date '"&TEXT(A${inventorySheet.getLastRow()+1},"yyyy-mm-dd")&"' AND D='Buy'")`, // Purchases Formula
+        sales, // Sales
+        `=QUERY(${SHEET_TRANSACTIONS}!$A$2:$K$1000, "SELECT SUM(F) WHERE E='${currency}' AND B=date '"&TEXT(A${inventorySheet.getLastRow()+1},"yyyy-mm-dd")&"' AND D='Sell'")`, // Sales Formula
+        adjustments, // Adjustments
+        closingBalance // Closing Balance
+      ];
       
-      updateProcessingStatus("Creating new inventory entry...");
+      inventorySheet.appendRow(inventoryRow);
       
-      // Add new row
-      inventorySheet.appendRow([
-        date,
-        currency,
-        previousDayBalance, // Opening balance
-        0, // Purchases (will be updated later)
-        0, // Sales (will be updated later)
-        0, // Adjustments
-      ]);
+      trackProcessingStep("Inventory Update", "Created new inventory record", 
+        { row: inventorySheet.getLastRow() });
       
-      rowIndex = inventorySheet.getLastRow();
-      
-      // Set closing balance formula
-      inventorySheet.getRange(rowIndex, 7).setFormula(`=C${rowIndex}+D${rowIndex}-E${rowIndex}+F${rowIndex}`);
-      
-      // Format cells
-      inventorySheet.getRange(rowIndex, 1).setNumberFormat('yyyy-mm-dd');
-      inventorySheet.getRange(rowIndex, 3, 1, 5).setNumberFormat('#,##0.00');
+      // Format the new row
+      const newRowIndex = inventorySheet.getLastRow();
+      inventorySheet.getRange(newRowIndex, 3, 1, 8).setNumberFormat('#,##0.00');
     }
+    
+    // Update future day opening balances if necessary
+    updateFutureDaysOpeningBalance(date, currency, closingBalance);
+    
+    trackProcessingStep("Inventory Update", "Completed inventory update", 
+      { date: dateFormatted, currency: currency });
     
     return {
       success: true,
-      message: `Inventory entry found or created`,
-      rowIndex: rowIndex,
-      openingBalance: inventorySheet.getRange(rowIndex, 3).getValue()
+      message: `Inventory updated for ${currency} on ${dateFormatted}`,
+      openingBalance: openingBalance,
+      purchases: purchases,
+      sales: sales,
+      adjustments: adjustments,
+      closingBalance: closingBalance
     };
   } catch (error) {
-    Logger.log(`Error finding/creating inventory entry: ${error}`);
+    Logger.log(`Error updating inventory: ${error}`);
+    trackProcessingStep("Inventory Update", "ERROR updating inventory", 
+      { error: error.toString() });
+    
     return {
       success: false,
-      message: `Error finding/creating inventory entry: ${error.toString()}`
+      message: `Error updating inventory: ${error.toString()}`
     };
   }
 }
 
 /**
- * Finds the closing balance from the previous day for a currency
- * @param {Date} date - The current date
- * @param {string} currency - The currency to find
- * @return {number} Previous day closing balance (or 0 if not found)
+ * Gets the previous day's closing balance for a currency
+ * @param {Date} date - The date to get previous day for
+ * @param {string} currency - The currency
+ * @return {Object} Previous day closing balance info
  */
-function findPreviousDayClosingBalance(date, currency) {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
-    
-    // Calculate previous day
-    const previousDay = new Date(date);
-    previousDay.setDate(previousDay.getDate() - 1);
-    const previousDayString = Utilities.formatDate(previousDay, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    
-    // Get all inventory entries
-    const inventory = inventorySheet.getDataRange().getValues();
-    
-    // Find the previous day entry
-    for (let i = 1; i < inventory.length; i++) {
-      if (!inventory[i][0]) continue; // Skip empty rows
-      
-      const entryDate = inventory[i][0];
-      const entryDateString = Utilities.formatDate(entryDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
-      if (entryDateString === previousDayString && inventory[i][1] === currency) {
-        return Number(inventory[i][6]); // Closing balance is in column 7 (index 6)
-      }
-    }
-    
-    // If no previous day entry, return 0
-    return 0;
-  } catch (error) {
-    Logger.log(`Error finding previous day balance: ${error}`);
-    return 0;
-  }
-}
-
-/**
- * Gets an array of dates between start and end (inclusive)
- * @param {Date} startDate - Start date
- * @param {Date} endDate - End date
- * @return {Array} Array of dates
- */
-function getDateRange(startDate, endDate) {
-  const dates = [];
-  const currentDate = new Date(startDate);
-  
-  while (currentDate <= endDate) {
-    dates.push(new Date(currentDate));
-    currentDate.setDate(currentDate.getDate() + 1);
-  }
-  
-  return dates;
-}
-
-/**
- * Calculate and update running balances for transactions
- * @return {Object} Result with status and message
- */
-function updateRunningBalances() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
-    
-    updateProcessingStatus("Checking balance columns...");
-    
-    // Check if running balance columns exist, create them if not
-    const headers = transactionSheet.getRange(1, 1, 1, transactionSheet.getLastColumn()).getValues()[0];
-    
-    const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
-    const balanceColumns = {};
-    
-    // Find or create running balance columns
-    for (const currency of currencies) {
-      const colName = `${currency} Balance`;
-      let colIndex = headers.indexOf(colName) + 1; // +1 because array is 0-based
-      
-      if (colIndex === 0) {
-        // Column doesn't exist, create it
-        updateProcessingStatus(`Creating balance column for ${currency}...`);
-        colIndex = transactionSheet.getLastColumn() + 1;
-        transactionSheet.getRange(1, colIndex).setValue(colName);
-        transactionSheet.getRange(1, colIndex).setFontWeight('bold');
-      }
-      
-      balanceColumns[currency] = colIndex;
-    }
-    
-    updateProcessingStatus("Loading transaction data...");
-    
-    // Get all transactions and sort by date
-    const dataRange = transactionSheet.getRange(2, 1, transactionSheet.getLastRow() - 1, transactionSheet.getLastColumn());
-    const transactions = dataRange.getValues();
-    
-    // Sort transactions by date
-    updateProcessingStatus("Sorting transactions by date...");
-    transactions.sort((a, b) => {
-      if (!a[1]) return -1;
-      if (!b[1]) return 1;
-      return a[1] - b[1];
-    });
-    
-    // Calculate running balances for each currency
-    const balances = {
-      'USD': 0,
-      'GBP': 0,
-      'EUR': 0,
-      'NAIRA': 0
-    };
-    
-    // Reset balance columns
-    updateProcessingStatus("Resetting balance columns...");
-    for (const currency of currencies) {
-      if (balanceColumns[currency]) {
-        transactionSheet.getRange(2, balanceColumns[currency], transactions.length, 1).clearContent();
-      }
-    }
-    
-    // Write transactions back to sheet in date order and calculate running balances
-    updateProcessingStatus("Calculating running balances...");
-    for (let i = 0; i < transactions.length; i++) {
-      const rowIndex = i + 2; // +2 because we start at row 2 (after header)
-      
-      // Show progress for large transaction sets
-      if (i % 100 === 0) {
-        updateProcessingStatus(`Processing transaction ${i+1} of ${transactions.length}...`);
-      }
-      
-      // Write back to sheet in sorted order
-      for (let j = 0; j < transactions[i].length; j++) {
-        transactionSheet.getRange(rowIndex, j + 1).setValue(transactions[i][j]);
-      }
-      
-      // Calculate running balance for this transaction
-      const currency = transactions[i][4];
-      const type = transactions[i][3];
-      const amount = Number(transactions[i][5]);
-      
-      if (currency && currencies.includes(currency)) {
-        if (type === 'Buy') {
-          balances[currency] += amount;
-        } else if (type === 'Sell') {
-          balances[currency] -= amount;
-        }
-        
-        // Set running balance
-        if (balanceColumns[currency]) {
-          transactionSheet.getRange(rowIndex, balanceColumns[currency]).setValue(balances[currency]);
-          transactionSheet.getRange(rowIndex, balanceColumns[currency]).setNumberFormat('#,##0.00');
-        }
-      }
-    }
-    
-    return {
-      success: true,
-      message: 'Running balances updated successfully'
-    };
-  } catch (error) {
-    Logger.log(`Error updating running balances: ${error}`);
-    return {
-      success: false,
-      message: `Error updating running balances: ${error.toString()}`
-    };
-  }
-}
-
-/**
- * Calculates the current balance for a specific currency
- * @param {string} currency - The currency to calculate balance for
- * @return {number} Current balance
- */
-function getCurrentBalance(currency) {
+function getPreviousDayClosing(date, currency) {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
+  const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
   
-  // Get all inventory entries
-  const inventory = inventorySheet.getDataRange().getValues();
+  if (!inventorySheet) {
+    return { amount: 0, source: 'No previous data' };
+  }
   
-  // Find the latest entry for this currency
-  let latestDate = new Date(0); // Start with epoch
-  let latestBalance = 0;
+  // Get all inventory data
+  const inventoryData = inventorySheet.getDataRange().getValues();
   
-  for (let i = 1; i < inventory.length; i++) {
-    if (!inventory[i][0]) continue; // Skip empty rows
+  // Format the target date for comparison
+  const targetDate = new Date(date);
+  targetDate.setDate(targetDate.getDate() - 1); // Previous day
+  const targetDateFormatted = formatDate(targetDate);
+  
+  // Find the previous day's entry for this currency
+  for (let i = 1; i < inventoryData.length; i++) {
+    const rowDate = formatDate(inventoryData[i][0]);
+    const rowCurrency = inventoryData[i][1];
     
-    const entryDate = inventory[i][0];
-    const entryCurrency = inventory[i][1];
-    
-    if (entryCurrency === currency && entryDate > latestDate) {
-      latestDate = entryDate;
-      latestBalance = Number(inventory[i][6]); // Closing balance is in column 7 (index 6)
+    if (rowDate === targetDateFormatted && rowCurrency === currency) {
+      return {
+        amount: inventoryData[i][9], // Closing Balance
+        source: `Previous day (${targetDateFormatted})`
+      };
     }
   }
   
-  return latestBalance;
+  // If no previous day, find the most recent entry for this currency
+  let mostRecentDate = null;
+  let mostRecentClosing = 0;
+  
+  for (let i = 1; i < inventoryData.length; i++) {
+    const rowDate = new Date(inventoryData[i][0]);
+    const rowCurrency = inventoryData[i][1];
+    
+    if (rowCurrency === currency && rowDate < date) {
+      if (!mostRecentDate || rowDate > mostRecentDate) {
+        mostRecentDate = rowDate;
+        mostRecentClosing = inventoryData[i][9]; // Closing Balance
+      }
+    }
+  }
+  
+  if (mostRecentDate) {
+    return {
+      amount: mostRecentClosing,
+      source: `Most recent (${formatDate(mostRecentDate)})`
+    };
+  }
+  
+  // Default to zero if no previous inventory found
+  return { amount: 0, source: 'Initial balance' };
 }
 
 /**
- * Updates the dashboard with current inventory balances
- * @return {Object} Result with status and message
+ * Gets transaction totals for a specific date and currency
+ * @param {Date} date - The date to get transactions for
+ * @param {string} currency - The currency
+ * @return {Object} Transaction totals
  */
-function updateDashboardInventory() {
-  try {
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const dashboardSheet = ss.getSheetByName(SHEET_DASHBOARD);
+function getTransactionsForDate(date, currency) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+  
+  if (!transactionSheet) {
+    return { purchases: 0, sales: 0 };
+  }
+  
+  // Format date for comparison
+  const dateFormatted = formatDate(date);
+  
+  // Get all transaction data
+  const transactions = transactionSheet.getDataRange().getValues();
+  
+  // Initialize totals
+  let purchases = 0;
+  let sales = 0;
+  
+  // Calculate totals
+  for (let i = 1; i < transactions.length; i++) {
+    const transactionDate = formatDate(transactions[i][1]);
+    const transactionType = transactions[i][3];
+    const transactionCurrency = transactions[i][4];
+    const transactionAmount = transactions[i][5];
     
-    const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
+    if (transactionDate === dateFormatted && transactionCurrency === currency) {
+      if (transactionType === 'Buy') {
+        purchases += transactionAmount;
+      } else if (transactionType === 'Sell') {
+        sales += transactionAmount;
+      }
+    }
+  }
+  
+  return { purchases: purchases, sales: sales };
+}
+
+/**
+ * Gets adjustment totals for a specific date and currency
+ * @param {Date} date - The date to get adjustments for
+ * @param {string} currency - The currency
+ * @return {number} Adjustment total
+ */
+function getAdjustmentsForDate(date, currency) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const adjustmentsSheet = ss.getSheetByName(SHEET_ADJUSTMENTS);
+  
+  if (!adjustmentsSheet) {
+    return 0;
+  }
+  
+  // Format date for comparison
+  const dateFormatted = formatDate(date);
+  
+  // Get all adjustment data
+  const adjustments = adjustmentsSheet.getDataRange().getValues();
+  
+  // Initialize total
+  let total = 0;
+  
+  // Calculate total
+  for (let i = 1; i < adjustments.length; i++) {
+    const adjustmentDate = formatDate(adjustments[i][1]);
+    const adjustmentCurrency = adjustments[i][2];
+    const adjustmentAmount = adjustments[i][3];
     
-    // Update balance for each currency
-    for (let i = 0; i < currencies.length; i++) {
-      const currency = currencies[i];
-      updateProcessingStatus(`Updating dashboard for ${currency}...`);
-      const balance = getCurrentBalance(currency);
+    if (adjustmentDate === dateFormatted && adjustmentCurrency === currency) {
+      total += adjustmentAmount;
+    }
+  }
+  
+  return total;
+}
+
+/**
+ * Updates future days opening balances after a change
+ * @param {Date} fromDate - The date from which to update
+ * @param {string} currency - The currency to update
+ * @param {number} closingBalance - The closing balance to cascade
+ */
+function updateFutureDaysOpeningBalance(fromDate, currency, closingBalance) {
+  trackProcessingStep("Inventory Update", "Updating future days", 
+      { date: formatDate(fromDate), currency: currency });
+  
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+  
+  if (!inventorySheet) {
+    return;
+  }
+  
+  // Format date for comparison
+  const fromDateObj = new Date(fromDate);
+  fromDateObj.setDate(fromDateObj.getDate() + 1); // Start from next day
+  
+  // Get all inventory data
+  const inventoryData = inventorySheet.getDataRange().getValues();
+  
+  // Update future days
+  let nextDayBalance = closingBalance;
+  
+  for (let i = 1; i < inventoryData.length; i++) {
+    const rowDate = new Date(inventoryData[i][0]);
+    const rowCurrency = inventoryData[i][1];
+    
+    if (rowCurrency === currency && rowDate >= fromDateObj) {
+      // Update this row's opening balance
+      inventorySheet.getRange(i + 1, 3).setValue(nextDayBalance);
+      inventorySheet.getRange(i + 1, 4).setValue(`Updated from ${formatDate(fromDate)}`);
       
-      // Dashboard currency balances are at rows 6-9
-      dashboardSheet.getRange(6 + i, 2).setValue(balance);
+      // Recalculate closing balance for this day
+      const purchases = inventoryData[i][4];
+      const sales = inventoryData[i][6];
+      const adjustments = inventoryData[i][8];
+      const newClosingBalance = nextDayBalance + purchases - sales + adjustments;
+      
+      inventorySheet.getRange(i + 1, 10).setValue(newClosingBalance);
+      
+      // Update for next iteration
+      nextDayBalance = newClosingBalance;
+      fromDateObj = rowDate;
     }
-    
-    return {
-      success: true,
-      message: 'Dashboard inventory updated successfully'
-    };
-  } catch (error) {
-    Logger.log(`Error updating dashboard inventory: ${error}`);
-    return {
-      success: false,
-      message: `Error updating dashboard inventory: ${error.toString()}`
-    };
   }
+  
+  trackProcessingStep("Inventory Update", "Completed future days update", 
+      { currency: currency });
 }
 
 /**
- * Records an inventory adjustment
- * @param {Object} adjustmentData - Adjustment data
- * @return {Object} Result with status and message
+ * Sets up the Inventory sheet if it doesn't exist
  */
-function recordInventoryAdjustment(adjustmentData) {
-  try {
-    showLoading("Recording inventory adjustment...");
-    
-    const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
-    
-    // Format date
-    const date = new Date(adjustmentData.date);
-    
-    updateProcessingStatus("Finding or creating inventory entry...");
-    
-    // Find or create inventory entry
-    const inventoryEntry = findOrCreateInventoryEntry(date, adjustmentData.currency);
-    if (!inventoryEntry.success) {
-      return inventoryEntry;
-    }
-    
-    const { rowIndex } = inventoryEntry;
-    
-    // Update adjustment column
-    updateProcessingStatus("Applying adjustment...");
-    const currentAdjustment = inventorySheet.getRange(rowIndex, 6).getValue() || 0;
-    const newAdjustment = currentAdjustment + adjustmentData.amount;
-    
-    inventorySheet.getRange(rowIndex, 6).setValue(newAdjustment);
-    
-    // Add note about adjustment
-    const notesRange = inventorySheet.getRange(rowIndex, 8);
-    const currentNotes = notesRange.getValue() || '';
-    const timestamp = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd HH:mm');
-    
-    const newNote = `${currentNotes}\n${timestamp}: ${adjustmentData.reason} (${adjustmentData.amount > 0 ? '+' : ''}${adjustmentData.amount})`;
-    
-    notesRange.setValue(newNote);
-    
-    // Update dashboard
-    updateProcessingStatus("Updating dashboard...");
-    updateDashboardInventory();
-    
-    return {
-      success: true,
-      message: `Inventory adjustment recorded successfully`
-    };
-  } catch (error) {
-    Logger.log(`Error recording inventory adjustment: ${error}`);
-    return {
-      success: false,
-      message: `Error recording inventory adjustment: ${error.toString()}`
-    };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Adjustment completed", "Complete", 3);
+function setupInventorySheet() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  let inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+  
+  if (!inventorySheet) {
+    inventorySheet = ss.insertSheet(SHEET_INVENTORY);
+    Logger.log(`Created sheet: ${SHEET_INVENTORY}`);
   }
+  
+  // Clear existing content
+  inventorySheet.clear();
+  
+  // Set headers
+  const headers = [
+    'Date', 'Currency', 'Opening Balance', 'Formula/Source', 'Purchases',
+    'Purchase Formula', 'Sales', 'Sales Formula', 'Adjustments', 'Closing Balance'
+  ];
+  
+  inventorySheet.getRange(1, 1, 1, headers.length).setValues([headers]);
+  inventorySheet.getRange(1, 1, 1, headers.length).setFontWeight('bold');
+  inventorySheet.setFrozenRows(1);
+  
+  // Set column formats
+  inventorySheet.getRange('C:C').setNumberFormat('#,##0.00');
+  inventorySheet.getRange('E:E').setNumberFormat('#,##0.00');
+  inventorySheet.getRange('G:G').setNumberFormat('#,##0.00');
+  inventorySheet.getRange('I:I').setNumberFormat('#,##0.00');
+  inventorySheet.getRange('J:J').setNumberFormat('#,##0.00');
+  
+  // Auto-resize columns
+  inventorySheet.autoResizeColumns(1, headers.length);
+  
+  return inventorySheet;
 }
 
 /**
- * Perform daily inventory reconciliation
- * @param {Date} date - The date to reconcile (defaults to today)
- * @return {Object} Reconciliation results
+ * Gets current inventory balance for all currencies
+ * @return {Array} Array of currency balances
+ */
+function getCurrentInventoryBalances() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+  
+  if (!inventorySheet) {
+    return [];
+  }
+  
+  // Get inventory data
+  const inventoryData = inventorySheet.getDataRange().getValues();
+  
+  // Initialize array to hold the latest balance for each currency
+  const balances = {};
+  
+  // Find the latest entry for each currency
+  for (let i = 1; i < inventoryData.length; i++) {
+    const currency = inventoryData[i][1];
+    const date = new Date(inventoryData[i][0]);
+    const closingBalance = inventoryData[i][9];
+    
+    if (!balances[currency] || date > balances[currency].date) {
+      balances[currency] = {
+        date: date,
+        balance: closingBalance
+      };
+    }
+  }
+  
+  // Convert to array
+  const result = [];
+  for (const currency in balances) {
+    result.push({
+      currency: currency,
+      date: balances[currency].date,
+      balance: balances[currency].balance
+    });
+  }
+  
+  return result;
+}
+
+/**
+ * Gets inventory history for a specific currency
+ * @param {string} currency - The currency to get history for
+ * @param {number} days - Number of days to look back
+ * @return {Array} Inventory history
+ */
+function getInventoryHistory(currency, days) {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
+  
+  if (!inventorySheet) {
+    return [];
+  }
+  
+  // Calculate cutoff date
+  const cutoffDate = new Date();
+  cutoffDate.setDate(cutoffDate.getDate() - days);
+  
+  // Get inventory data
+  const inventoryData = inventorySheet.getDataRange().getValues();
+  
+  // Filter for the requested currency and date range
+  const history = [];
+  
+  for (let i = 1; i < inventoryData.length; i++) {
+    const rowDate = new Date(inventoryData[i][0]);
+    const rowCurrency = inventoryData[i][1];
+    
+    if (rowCurrency === currency && rowDate >= cutoffDate) {
+      history.push({
+        date: rowDate,
+        openingBalance: inventoryData[i][2],
+        purchases: inventoryData[i][4],
+        sales: inventoryData[i][6],
+        adjustments: inventoryData[i][8],
+        closingBalance: inventoryData[i][9]
+      });
+    }
+  }
+  
+  // Sort by date
+  history.sort((a, b) => a.date - b.date);
+  
+  return history;
+}
+
+/**
+ * Reconciles inventory with transaction data
+ * @param {Date} date - The date to reconcile
+ * @return {Object} Reconciliation result
  */
 function reconcileInventory(date) {
   try {
-    showLoading("Reconciling inventory...");
+    trackProcessingStep("Inventory Reconciliation", "Starting reconciliation", 
+      { date: formatDate(date) });
     
-    const reconcileDate = date || new Date();
-    const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
-    
-    updateProcessingStatus("Setting up reconciliation...");
-    
-    const results = {
-      success: true,
-      message: 'Inventory reconciliation completed',
-      reconciliationDate: Utilities.formatDate(reconcileDate, Session.getScriptTimeZone(), 'yyyy-MM-dd'),
-      currencies: {}
-    };
-    
-    // Reconcile each currency
-    for (const currency of currencies) {
-      updateProcessingStatus(`Reconciling ${currency}...`);
-      const result = reconcileCurrency(reconcileDate, currency);
-      results.currencies[currency] = result;
-      
-      if (!result.success) {
-        results.success = false;
-        results.message = `Some currencies failed reconciliation`;
-      }
-    }
-    
-    return results;
-  } catch (error) {
-    Logger.log(`Error reconciling inventory: ${error}`);
-    return {
-      success: false,
-      message: `Error reconciling inventory: ${error.toString()}`
-    };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Reconciliation completed", "Complete", 3);
-  }
-}
-
-/**
- * Reconcile a specific currency for a date
- * @param {Date} date - The date to reconcile
- * @param {string} currency - The currency to reconcile
- * @return {Object} Reconciliation result
- */
-function reconcileCurrency(date, currency) {
-  try {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
-    const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
-    const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
+    const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
     
-    // Format date to string for comparison
-    const dateString = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-    
-    // Get inventory entry
-    updateProcessingStatus(`Finding inventory entry for ${dateString}...`);
-    const inventoryEntry = findOrCreateInventoryEntry(date, currency);
-    if (!inventoryEntry.success) {
+    if (!inventorySheet) {
       return {
         success: false,
-        message: `Could not find or create inventory entry`,
-        details: inventoryEntry
+        message: 'Inventory sheet not found'
       };
     }
     
-    const { rowIndex } = inventoryEntry;
+    // Format date for comparison
+    const dateFormatted = formatDate(date);
     
-    // Get inventory values
-    const openingBalance = inventorySheet.getRange(rowIndex, 3).getValue() || 0;
-    const recordedPurchases = inventorySheet.getRange(rowIndex, 4).getValue() || 0;
-    const recordedSales = inventorySheet.getRange(rowIndex, 5).getValue() || 0;
-    const adjustments = inventorySheet.getRange(rowIndex, 6).getValue() || 0;
-    const closingBalance = inventorySheet.getRange(rowIndex, 7).getValue() || 0;
+    // Get all currency balances from inventory
+    const inventoryData = inventorySheet.getDataRange().getValues();
+    const currencyBalances = {};
     
-    // Calculate expected values from transactions
-    updateProcessingStatus("Calculating expected values from transactions...");
-    const transactions = transactionSheet.getDataRange().getValues();
+    trackProcessingStep("Inventory Reconciliation", "Finding currency balances", 
+      { date: dateFormatted });
     
-    let calculatedPurchases = 0;
-    let calculatedSales = 0;
-    
-    for (let i = 1; i < transactions.length; i++) {
-      const txDate = transactions[i][1];
-      if (!txDate) continue;
+    for (let i = 1; i < inventoryData.length; i++) {
+      const rowDate = formatDate(inventoryData[i][0]);
+      const rowCurrency = inventoryData[i][1];
+      const rowClosingBalance = inventoryData[i][9];
       
-      const txDateString = Utilities.formatDate(txDate, Session.getScriptTimeZone(), 'yyyy-MM-dd');
-      
-      if (txDateString === dateString && transactions[i][4] === currency) {
-        const type = transactions[i][3];
-        const amount = Number(transactions[i][5]);
-        
-        if (type === 'Buy') {
-          calculatedPurchases += amount;
-        } else if (type === 'Sell') {
-          calculatedSales += amount;
-        }
+      if (rowDate === dateFormatted) {
+        currencyBalances[rowCurrency] = {
+          inventoryBalance: rowClosingBalance,
+          calculatedBalance: 0,
+          discrepancy: 0,
+          reconciled: false
+        };
       }
     }
     
-    // Calculate expected closing balance
-    const expectedClosingBalance = openingBalance + calculatedPurchases - calculatedSales + adjustments;
+    // Calculate balances from transactions
+    trackProcessingStep("Inventory Reconciliation", "Calculating from transactions", 
+      { currencies: Object.keys(currencyBalances) });
     
-    // Check if values match
-    updateProcessingStatus("Checking for discrepancies...");
-    const purchasesMatch = Math.abs(recordedPurchases - calculatedPurchases) < 0.01;
-    const salesMatch = Math.abs(recordedSales - calculatedSales) < 0.01;
-    const balanceMatch = Math.abs(closingBalance - expectedClosingBalance) < 0.01;
-    
-    // Update inventory if values don't match
-    if (!purchasesMatch || !salesMatch) {
-      updateProcessingStatus("Correcting discrepancies...");
-      inventorySheet.getRange(rowIndex, 4).setValue(calculatedPurchases);
-      inventorySheet.getRange(rowIndex, 5).setValue(calculatedSales);
+    for (const currency in currencyBalances) {
+      // Get previous day closing
+      const previousDayClosing = getPreviousDayClosing(date, currency);
+      
+      // Get transactions for this date
+      const transactions = getTransactionsForDate(date, currency);
+      
+      // Get adjustments for this date
+      const adjustments = getAdjustmentsForDate(date, currency);
+      
+      // Calculate balance
+      const calculatedBalance = previousDayClosing.amount + transactions.purchases - transactions.sales + adjustments;
+      
+      // Update balance info
+      currencyBalances[currency].calculatedBalance = calculatedBalance;
+      currencyBalances[currency].discrepancy = currencyBalances[currency].inventoryBalance - calculatedBalance;
+      currencyBalances[currency].reconciled = Math.abs(currencyBalances[currency].discrepancy) < 0.01;
     }
     
+    // Check if all currencies are reconciled
+    let allReconciled = true;
+    const discrepancies = [];
+    
+    for (const currency in currencyBalances) {
+      if (!currencyBalances[currency].reconciled) {
+        allReconciled = false;
+        discrepancies.push(`${currency}: ${currencyBalances[currency].discrepancy.toFixed(2)}`);
+      }
+    }
+    
+    trackProcessingStep("Inventory Reconciliation", "Completed reconciliation", 
+      { reconciled: allReconciled, discrepancies: discrepancies });
+    
     return {
-      success: purchasesMatch && salesMatch && balanceMatch,
-      message: purchasesMatch && salesMatch && balanceMatch ? 
-        'Reconciliation successful' : 'Discrepancies found and corrected',
-      openingBalance: openingBalance,
-      calculatedPurchases: calculatedPurchases,
-      recordedPurchases: recordedPurchases,
-      purchasesMatch: purchasesMatch,
-      calculatedSales: calculatedSales,
-      recordedSales: recordedSales,
-      salesMatch: salesMatch,
-      adjustments: adjustments,
-      expectedClosingBalance: expectedClosingBalance,
-      closingBalance: closingBalance,
-      balanceMatch: balanceMatch
+      success: true,
+      message: allReconciled ? 'All currencies reconciled' : 'Discrepancies found',
+      date: dateFormatted,
+      currencyBalances: currencyBalances,
+      allReconciled: allReconciled,
+      discrepancies: discrepancies
     };
   } catch (error) {
-    Logger.log(`Error reconciling ${currency} on ${date}: ${error}`);
-    return {
-      success: false,
-      message: `Error reconciling currency: ${error.toString()}`
-    };
-  }
-}
-
-/**
- * Updates daily inventory for the current day
- * Called from Main.js when user clicks the "Update Inventory" button
- */
-function updateDailyInventory() {
-  try {
-    // Show loading dialog
-    showLoading("Updating daily inventory...");
-    
-    // Update inventory for today
-    updateProcessingStatus("Processing today's inventory...");
-    const today = new Date();
-    const result = updateInventoryForDateRange(today, today);
-    
-    // Update dashboard after inventory update
-    updateProcessingStatus("Updating dashboard...");
-    updateDashboardInventory();
-    
-    // Update running balances
-    updateProcessingStatus("Updating running balances...");
-    updateRunningBalances();
-    
-    // Show completion message
-    SpreadsheetApp.getUi().alert(
-      'Inventory Updated', 
-      'Daily inventory has been updated successfully.', 
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
-    
-    return result;
-  } catch (error) {
-    Logger.log(`Error in updateDailyInventory: ${error}`);
-    // Show error message
-    SpreadsheetApp.getUi().alert(
-      'Error', 
-      `Failed to update daily inventory: ${error.toString()}`, 
-      SpreadsheetApp.getUi().ButtonSet.OK
-    );
+    Logger.log(`Error reconciling inventory: ${error}`);
+    trackProcessingStep("Inventory Reconciliation", "ERROR in reconciliation", 
+      { error: error.toString() });
     
     return {
       success: false,
-      message: `Error updating daily inventory: ${error.toString()}`
+      message: `Error reconciling inventory: ${error.toString()}`
     };
   }
 }
