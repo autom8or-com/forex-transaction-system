@@ -66,6 +66,9 @@
         margin-top: 0;
       }
     </style>
+    
+    <!-- Include progress indicator component -->
+    <?!= includeProgressIndicator(); ?>
   </head>
   <body>
     <h2>Swap Transaction</h2>
@@ -166,8 +169,8 @@
       </div>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Process Swap</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit" id="submitButton">Process Swap</button>
       </div>
     </form>
     
@@ -216,6 +219,15 @@
       document.getElementById('swapForm').addEventListener('submit', function(e) {
         e.preventDefault();
         
+        // Show loading overlay
+        showLoadingOverlay("Processing swap transaction...");
+        
+        // Initialize processing steps for this transaction type
+        initTransactionProcessing('swap');
+        
+        // Update first processing step
+        updateProcessingStep("Validating swap data...");
+        
         // Collect form data
         const formData = {
           date: document.getElementById('date').value,
@@ -232,44 +244,14 @@
         
         // Send data to server
         google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
+          .withSuccessHandler(handleFormSuccess)
+          .withFailureHandler(handleFormFailure)
           .processSwapForm(formData);
       });
       
       // Currency dropdowns change handler
       document.getElementById('fromCurrency').addEventListener('change', updateEquivalentRate);
       document.getElementById('toCurrency').addEventListener('change', updateEquivalentRate);
-      
-      // Success handler
-      function onSuccess(result) {
-        if (result.success) {
-          // Show success message
-          const messageDiv = document.getElementById('message');
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'success';
-          messageDiv.style.display = 'block';
-          
-          // Close the dialog after a delay
-          setTimeout(function() {
-            google.script.host.close();
-          }, 2000);
-        } else {
-          // Show error message
-          const messageDiv = document.getElementById('message');
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'error';
-          messageDiv.style.display = 'block';
-        }
-      }
-      
-      // Failure handler
-      function onFailure(error) {
-        const messageDiv = document.getElementById('message');
-        messageDiv.innerHTML = "Error: " + error.message;
-        messageDiv.className = 'error';
-        messageDiv.style.display = 'block';
-      }
     </script>
   </body>
 </html>
