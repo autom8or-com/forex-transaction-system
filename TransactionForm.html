@@ -53,6 +53,9 @@
         margin-bottom: 15px;
       }
     </style>
+    
+    <!-- Include progress indicator component -->
+    <?!= includeProgressIndicator(); ?>
   </head>
   <body>
     <h2>New Transaction</h2>
@@ -144,8 +147,8 @@
       </div>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Save Transaction</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
+        <button type="submit" id="submitButton">Save Transaction</button>
       </div>
     </form>
     
@@ -153,6 +156,15 @@
       // Form submission handler
       document.getElementById('transactionForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Show loading overlay
+        showLoadingOverlay("Processing transaction...");
+        
+        // Initialize processing steps for this transaction type
+        initTransactionProcessing('transaction');
+        
+        // Update first processing step
+        updateProcessingStep("Validating transaction data...");
         
         // Collect form data
         const formData = {
@@ -171,52 +183,10 @@
         
         // Send data to server
         google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
+          .withSuccessHandler(handleFormSuccess)
+          .withFailureHandler(handleFormFailure)
           .processTransactionForm(formData);
       });
-      
-      // Success handler
-      function onSuccess(result) {
-        if (result.success) {
-          if (result.showSettlementForm) {
-            // Redirect to settlement form
-            google.script.run.showSettlementForm();
-            google.script.host.close();
-          } else {
-            // Show success message
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = result.message;
-            messageDiv.className = 'success';
-            messageDiv.style.display = 'block';
-            
-            // Close the dialog after a delay
-            setTimeout(function() {
-              google.script.host.close();
-            }, 2000);
-          }
-        } else {
-          // Handle special cases
-          if (result.showSwapForm) {
-            google.script.run.showSwapForm();
-            google.script.host.close();
-          } else {
-            // Show error message
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = result.message;
-            messageDiv.className = 'error';
-            messageDiv.style.display = 'block';
-          }
-        }
-      }
-      
-      // Failure handler
-      function onFailure(error) {
-        const messageDiv = document.getElementById('message');
-        messageDiv.innerHTML = "Error: " + error.message;
-        messageDiv.className = 'error';
-        messageDiv.style.display = 'block';
-      }
       
       // Initialize
       document.addEventListener('DOMContentLoaded', function() {
