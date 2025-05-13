@@ -54,7 +54,7 @@
       }
     </style>
     
-    <!-- Include progress indicator components -->
+    <!-- Include progress indicator component -->
     <?!= includeProgressIndicator(); ?>
   </head>
   <body>
@@ -117,12 +117,8 @@
         
         // Send data to server
         google.script.run
-          .withSuccessHandler(function(result) {
-            handleFormSuccess(result, true);
-          })
-          .withFailureHandler(function(error) {
-            handleFormFailure(error);
-          })
+          .withSuccessHandler(handleFormSuccess)
+          .withFailureHandler(handleFormFailure)
           .processAdjustmentForm(formData);
       });
     </script>
