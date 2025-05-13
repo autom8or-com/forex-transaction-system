@@ -68,7 +68,8 @@ function processTransactionForm(formData) {
       return {
         success: true,
         message: 'Please continue to add settlement details',
-        showSettlementForm: true
+        showSettlementForm: true,
+        processingSteps: ['Transaction data saved', 'Preparing settlement form']
       };
     }
     
@@ -88,6 +89,11 @@ function processTransactionForm(formData) {
     
     // Create the transaction
     const result = createTransaction(transactionData);
+    
+    // Add processing steps to result if not already included
+    if (result.success && !result.processingSteps) {
+      result.processingSteps = ['Transaction data validated', 'Transaction record created', 'Inventory updated'];
+    }
     
     return result;
   } catch (error) {
@@ -177,6 +183,16 @@ function processSettlementForm(formData) {
     // Create the transaction
     const result = createTransaction(transactionData);
     
+    // Add processing steps to result if not already included
+    if (result.success && !result.processingSteps) {
+      result.processingSteps = [
+        'Settlement data validated', 
+        `${formData.settlements.length} settlement legs processed`, 
+        'Transaction record created',
+        'Inventory updated'
+      ];
+    }
+    
     // Clear pending transaction data
     props.deleteProperty('pendingTransaction');
     
@@ -228,9 +244,6 @@ function showSwapForm() {
  */
 function processSwapForm(formData) {
   try {
-    // Show loading indicator
-    showLoading("Processing swap transaction...");
-    
     // Generate swap ID
     const swapId = 'SWAP-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
     
@@ -252,6 +265,16 @@ function processSwapForm(formData) {
     // Process the swap transaction
     const result = processSwapTransaction(swapData);
     
+    // Add processing steps to result if not already included
+    if (result.success && !result.processingSteps) {
+      result.processingSteps = [
+        'Swap data validated',
+        `Sell transaction created (${formData.fromCurrency} ${formData.fromAmount})`,
+        `Buy transaction created (${formData.toCurrency} ${formData.toAmount})`,
+        'Inventory updated for both currencies'
+      ];
+    }
+    
     return result;
   } catch (error) {
     Logger.log(`Error processing swap form: ${error}`);
@@ -259,9 +282,6 @@ function processSwapForm(formData) {
       success: false,
       message: `Error processing form: ${error.toString()}`
     };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Swap processing completed", "Complete", 3);
   }
 }
 
@@ -343,9 +363,6 @@ function showInventoryAdjustmentForm() {
  */
 function processAdjustmentForm(formData) {
   try {
-    // Show loading indicator
-    showLoading("Processing adjustment...");
-    
     // Create adjustment data
     const adjustmentData = {
       date: formData.date,
@@ -357,6 +374,15 @@ function processAdjustmentForm(formData) {
     // Record the adjustment
     const result = recordInventoryAdjustment(adjustmentData);
     
+    // Add processing steps to result if not already included
+    if (result.success && !result.processingSteps) {
+      result.processingSteps = [
+        'Adjustment data validated',
+        `Inventory adjusted for ${formData.currency} (${formData.amount > 0 ? '+' : ''}${formData.amount})`,
+        'Adjustment record saved'
+      ];
+    }
+    
     return result;
   } catch (error) {
     Logger.log(`Error processing adjustment form: ${error}`);
@@ -364,9 +390,6 @@ function processAdjustmentForm(formData) {
       success: false,
       message: `Error processing form: ${error.toString()}`
     };
-  } finally {
-    // Close the loading dialog by refreshing the UI
-    SpreadsheetApp.getActiveSpreadsheet().toast("Adjustment processing completed", "Complete", 3);
   }
 }
 
@@ -524,6 +547,44 @@ function getTransactionFormHtml() {
         font-size: 14px;
         color: #666;
       }
+      .processing-steps {
+        margin-top: 15px;
+        text-align: left;
+        max-width: 250px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .step-item {
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #666;
+        display: flex;
+        align-items: center;
+      }
+      .step-indicator {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        text-align: center;
+        margin-right: 8px;
+        font-size: 12px;
+        color: #fff;
+      }
+      .step-complete .step-indicator {
+        background: #4CAF50;
+      }
+      .step-active .step-indicator {
+        background: #2196F3;
+      }
+      .step-pending .step-indicator {
+        background: #e0e0e0;
+      }
+      .step-text {
+        flex: 1;
+      }
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -541,6 +602,9 @@ function getTransactionFormHtml() {
         <div class="spinner"></div>
         <p id="processingStatus">Processing transaction...</p>
         <p id="processingStep" class="processing-step"></p>
+        <div id="processingSteps" class="processing-steps">
+          <!-- Processing steps will be added here dynamically -->
+        </div>
       </div>
     </div>
     
@@ -585,7 +649,14 @@ function getTransactionFormHtml() {
       
       <div class="form-group">
         <label for="nature">Nature of Transaction</label>
-        <input type="text" id="nature" name="nature" required>
+        <select id="nature" name="nature" required>
+          <option value="Transferred to customer">Transferred to customer</option>
+          <option value="Received via transfer">Received via transfer</option>
+          <option value="Cash Swap for offshore">Cash Swap for offshore</option>
+          <option value="Cash Swap for offshore pounds">Cash Swap for offshore pounds</option>
+          <option value="Cash Swap">Cash Swap</option>
+          <option value="Other">Other</option>
+        </select>
       </div>
       
       <div class="form-group">
@@ -593,6 +664,7 @@ function getTransactionFormHtml() {
         <select id="source" name="source" required>
           <option value="Walk-in">Walk-in</option>
           <option value="Bank Transfer">Bank Transfer</option>
+          <option value="Cash">Cash</option>
           <option value="Referral">Referral</option>
           <option value="Other">Other</option>
         </select>
@@ -621,7 +693,7 @@ function getTransactionFormHtml() {
       </div>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
         <button type="submit" id="submitButton">Save Transaction</button>
       </div>
     </form>
@@ -632,13 +704,24 @@ function getTransactionFormHtml() {
         e.preventDefault();
         
         // Show loading overlay
-        document.getElementById('loadingOverlay').style.display = 'block';
+        showLoadingOverlay("Processing transaction...");
         
-        // Disable submit button to prevent double submission
+        // Disable buttons to prevent double submission
         document.getElementById('submitButton').disabled = true;
+        document.getElementById('cancelButton').disabled = true;
         
-        // Set initial processing step
-        document.getElementById('processingStep').textContent = 'Validating transaction data...';
+        // Add initial processing step
+        updateProcessingStep("Validating transaction data...");
+        
+        // Set up initial processing steps
+        const steps = [
+          "Validating transaction data",
+          "Creating transaction record",
+          "Processing settlement",
+          "Updating inventory"
+        ];
+        initializeProcessingSteps(steps);
+        setStepActive(0); // Set first step as active
         
         // Collect form data
         const formData = {
@@ -664,23 +747,40 @@ function getTransactionFormHtml() {
       
       // Success handler
       function onSuccess(result) {
-        // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
-        
-        // Enable the submit button again
+        // Re-enable the buttons
         document.getElementById('submitButton').disabled = false;
+        document.getElementById('cancelButton').disabled = false;
+        
+        // Update processing steps if provided
+        if (result.processingSteps) {
+          updateProcessingStepsFromResult(result.processingSteps);
+        }
         
         if (result.success) {
           if (result.showSettlementForm) {
-            // Redirect to settlement form
-            google.script.run.showSettlementForm();
-            google.script.host.close();
+            // Update processing status before redirection
+            updateProcessingStep("Opening settlement form...");
+            
+            // Short delay before redirect to show the final status
+            setTimeout(function() {
+              // Redirect to settlement form
+              google.script.run.showSettlementForm();
+              google.script.host.close();
+            }, 1000);
           } else {
+            // Set the last step as complete
+            setAllStepsComplete();
+            
             // Show success message
             const messageDiv = document.getElementById('message');
             messageDiv.innerHTML = result.message;
             messageDiv.className = 'success';
             messageDiv.style.display = 'block';
+            
+            // Hide loading overlay
+            setTimeout(function() {
+              hideLoadingOverlay();
+            }, 1000);
             
             // Close the dialog after a delay
             setTimeout(function() {
@@ -688,6 +788,9 @@ function getTransactionFormHtml() {
             }, 2000);
           }
         } else {
+          // Hide loading overlay
+          hideLoadingOverlay();
+          
           // Handle special cases
           if (result.showSwapForm) {
             google.script.run.showSwapForm();
@@ -705,10 +808,11 @@ function getTransactionFormHtml() {
       // Failure handler
       function onFailure(error) {
         // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
+        hideLoadingOverlay();
         
-        // Enable the submit button again
+        // Re-enable the buttons
         document.getElementById('submitButton').disabled = false;
+        document.getElementById('cancelButton').disabled = false;
         
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
@@ -716,9 +820,136 @@ function getTransactionFormHtml() {
         messageDiv.style.display = 'block';
       }
       
-      // Update processing step function that can be called from different parts of the process
+      // Show loading overlay with message
+      function showLoadingOverlay(message) {
+        document.getElementById('loadingOverlay').style.display = 'block';
+        if (message) {
+          document.getElementById('processingStatus').textContent = message;
+        }
+      }
+      
+      // Hide loading overlay
+      function hideLoadingOverlay() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+      }
+      
+      // Update the processing step message
       function updateProcessingStep(step) {
         document.getElementById('processingStep').textContent = step;
+      }
+      
+      // Initialize processing steps display
+      function initializeProcessingSteps(steps) {
+        const stepsContainer = document.getElementById('processingSteps');
+        stepsContainer.innerHTML = '';
+        
+        steps.forEach((step, index) => {
+          const stepItem = document.createElement('div');
+          stepItem.className = 'step-item step-pending';
+          stepItem.id = 'step-' + index;
+          
+          stepItem.innerHTML = \`
+            <span class="step-indicator">\${index + 1}</span>
+            <span class="step-text">\${step}</span>
+          \`;
+          
+          stepsContainer.appendChild(stepItem);
+        });
+      }
+      
+      // Set a specific step as active (in progress)
+      function setStepActive(stepIndex) {
+        // First, make sure all previous steps are complete
+        for (let i = 0; i < stepIndex; i++) {
+          const step = document.getElementById('step-' + i);
+          if (step) {
+            step.className = 'step-item step-complete';
+          }
+        }
+        
+        // Set the current step as active
+        const currentStep = document.getElementById('step-' + stepIndex);
+        if (currentStep) {
+          currentStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark a specific step as complete
+      function setStepComplete(stepIndex) {
+        const step = document.getElementById('step-' + stepIndex);
+        if (step) {
+          step.className = 'step-item step-complete';
+        }
+        
+        // Set next step as active if available
+        const nextStep = document.getElementById('step-' + (stepIndex + 1));
+        if (nextStep) {
+          nextStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark all steps as complete
+      function setAllStepsComplete() {
+        const stepsContainer = document.getElementById('processingSteps');
+        const steps = stepsContainer.querySelectorAll('.step-item');
+        
+        steps.forEach(step => {
+          step.className = 'step-item step-complete';
+        });
+      }
+      
+      // Update processing steps based on server response
+      function updateProcessingStepsFromResult(steps) {
+        // Reinitialize with the actual steps from the server
+        initializeProcessingSteps(steps);
+        
+        // Show steps one by one with a delay to simulate progress
+        let i = 0;
+        const stepInterval = setInterval(function() {
+          setStepComplete(i);
+          i++;
+          
+          if (i >= steps.length - 1) {
+            clearInterval(stepInterval);
+            setAllStepsComplete();
+          }
+        }, 500);
+      }
+      
+      // Initialize
+      document.addEventListener('DOMContentLoaded', function() {
+        // Calculate total value when amount or rate changes
+        document.getElementById('amount').addEventListener('input', calculateTotal);
+        document.getElementById('rate').addEventListener('input', calculateTotal);
+        
+        // Set default type based on transaction type
+        document.getElementById('transactionType').addEventListener('change', updateNatureField);
+      });
+      
+      // Calculate total value
+      function calculateTotal() {
+        const amount = parseFloat(document.getElementById('amount').value) || 0;
+        const rate = parseFloat(document.getElementById('rate').value) || 0;
+        const total = amount * rate;
+        
+        // If we had a total field, we'd update it here
+        console.log('Total value: ' + total.toFixed(2));
+      }
+      
+      // Update nature field based on transaction type
+      function updateNatureField() {
+        const transactionType = document.getElementById('transactionType').value;
+        const natureField = document.getElementById('nature');
+        
+        // Clear current selection
+        natureField.value = '';
+        
+        // Set default value based on transaction type
+        if (transactionType === 'Buy') {
+          natureField.value = 'Transferred to customer';
+        } else if (transactionType === 'Sell') {
+          natureField.value = 'Received via transfer';
+        }
       }
     </script>
   </body>
@@ -854,6 +1085,44 @@ function getSettlementFormHtml() {
         font-size: 14px;
         color: #666;
       }
+      .processing-steps {
+        margin-top: 15px;
+        text-align: left;
+        max-width: 250px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .step-item {
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #666;
+        display: flex;
+        align-items: center;
+      }
+      .step-indicator {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        text-align: center;
+        margin-right: 8px;
+        font-size: 12px;
+        color: #fff;
+      }
+      .step-complete .step-indicator {
+        background: #4CAF50;
+      }
+      .step-active .step-indicator {
+        background: #2196F3;
+      }
+      .step-pending .step-indicator {
+        background: #e0e0e0;
+      }
+      .step-text {
+        flex: 1;
+      }
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -871,6 +1140,9 @@ function getSettlementFormHtml() {
         <div class="spinner"></div>
         <p id="processingStatus">Processing settlements...</p>
         <p id="processingStep" class="processing-step"></p>
+        <div id="processingSteps" class="processing-steps">
+          <!-- Processing steps will be added here dynamically -->
+        </div>
       </div>
     </div>
     
@@ -895,7 +1167,7 @@ function getSettlementFormHtml() {
       <button type="button" class="add-settlement" onclick="addSettlement()">+ Add Settlement Method</button>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
         <button type="submit" id="submitButton">Complete Transaction</button>
       </div>
     </form>
@@ -1073,13 +1345,24 @@ function getSettlementFormHtml() {
         }
         
         // Show loading overlay
-        document.getElementById('loadingOverlay').style.display = 'block';
+        showLoadingOverlay("Processing settlements...");
         
-        // Disable submit button to prevent double submission
+        // Disable buttons to prevent double submission
         document.getElementById('submitButton').disabled = true;
+        document.getElementById('cancelButton').disabled = true;
         
-        // Set initial processing step
-        document.getElementById('processingStep').textContent = 'Validating settlement data...';
+        // Set up initial processing steps
+        const steps = [
+          "Validating settlement data",
+          `Processing ${settlements.length} settlement legs`,
+          "Creating transaction record",
+          "Updating inventory"
+        ];
+        initializeProcessingSteps(steps);
+        setStepActive(0); // Set first step as active
+        
+        // Update processing step
+        updateProcessingStep("Validating settlement data...");
         
         // Submit data
         const formData = {
@@ -1095,24 +1378,42 @@ function getSettlementFormHtml() {
       
       // Success handler
       function onSuccess(result) {
-        // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
-        
-        // Enable submit button again
-        document.getElementById('submitButton').disabled = false;
+        // Update processing steps if provided
+        if (result.processingSteps) {
+          updateProcessingStepsFromResult(result.processingSteps);
+        }
         
         if (result.success) {
+          // Set all steps as complete
+          setAllStepsComplete();
+          
           // Show success message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
           messageDiv.className = 'success';
           messageDiv.style.display = 'block';
           
+          // Hide loading overlay after a short delay
+          setTimeout(function() {
+            hideLoadingOverlay();
+          }, 1000);
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Close the dialog after a delay
           setTimeout(function() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Hide loading overlay
+          hideLoadingOverlay();
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -1124,10 +1425,11 @@ function getSettlementFormHtml() {
       // Failure handler
       function onFailure(error) {
         // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
+        hideLoadingOverlay();
         
-        // Enable submit button again
+        // Re-enable buttons
         document.getElementById('submitButton').disabled = false;
+        document.getElementById('cancelButton').disabled = false;
         
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
@@ -1135,9 +1437,100 @@ function getSettlementFormHtml() {
         messageDiv.style.display = 'block';
       }
       
-      // Update processing step function
+      // Show loading overlay with message
+      function showLoadingOverlay(message) {
+        document.getElementById('loadingOverlay').style.display = 'block';
+        if (message) {
+          document.getElementById('processingStatus').textContent = message;
+        }
+      }
+      
+      // Hide loading overlay
+      function hideLoadingOverlay() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+      }
+      
+      // Update the processing step message
       function updateProcessingStep(step) {
         document.getElementById('processingStep').textContent = step;
+      }
+      
+      // Initialize processing steps display
+      function initializeProcessingSteps(steps) {
+        const stepsContainer = document.getElementById('processingSteps');
+        stepsContainer.innerHTML = '';
+        
+        steps.forEach((step, index) => {
+          const stepItem = document.createElement('div');
+          stepItem.className = 'step-item step-pending';
+          stepItem.id = 'step-' + index;
+          
+          stepItem.innerHTML = \`
+            <span class="step-indicator">\${index + 1}</span>
+            <span class="step-text">\${step}</span>
+          \`;
+          
+          stepsContainer.appendChild(stepItem);
+        });
+      }
+      
+      // Set a specific step as active (in progress)
+      function setStepActive(stepIndex) {
+        // First, make sure all previous steps are complete
+        for (let i = 0; i < stepIndex; i++) {
+          const step = document.getElementById('step-' + i);
+          if (step) {
+            step.className = 'step-item step-complete';
+          }
+        }
+        
+        // Set the current step as active
+        const currentStep = document.getElementById('step-' + stepIndex);
+        if (currentStep) {
+          currentStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark a specific step as complete
+      function setStepComplete(stepIndex) {
+        const step = document.getElementById('step-' + stepIndex);
+        if (step) {
+          step.className = 'step-item step-complete';
+        }
+        
+        // Set next step as active if available
+        const nextStep = document.getElementById('step-' + (stepIndex + 1));
+        if (nextStep) {
+          nextStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark all steps as complete
+      function setAllStepsComplete() {
+        const stepsContainer = document.getElementById('processingSteps');
+        const steps = stepsContainer.querySelectorAll('.step-item');
+        
+        steps.forEach(step => {
+          step.className = 'step-item step-complete';
+        });
+      }
+      
+      // Update processing steps based on server response
+      function updateProcessingStepsFromResult(steps) {
+        // Reinitialize with the actual steps from the server
+        initializeProcessingSteps(steps);
+        
+        // Show steps one by one with a delay to simulate progress
+        let i = 0;
+        const stepInterval = setInterval(function() {
+          setStepComplete(i);
+          i++;
+          
+          if (i >= steps.length - 1) {
+            clearInterval(stepInterval);
+            setAllStepsComplete();
+          }
+        }, 500);
       }
     </script>
   </body>
@@ -1252,6 +1645,44 @@ function getSwapFormHtml() {
         font-size: 14px;
         color: #666;
       }
+      .processing-steps {
+        margin-top: 15px;
+        text-align: left;
+        max-width: 280px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .step-item {
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #666;
+        display: flex;
+        align-items: center;
+      }
+      .step-indicator {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        text-align: center;
+        margin-right: 8px;
+        font-size: 12px;
+        color: #fff;
+      }
+      .step-complete .step-indicator {
+        background: #4CAF50;
+      }
+      .step-active .step-indicator {
+        background: #2196F3;
+      }
+      .step-pending .step-indicator {
+        background: #e0e0e0;
+      }
+      .step-text {
+        flex: 1;
+      }
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -1269,6 +1700,9 @@ function getSwapFormHtml() {
         <div class="spinner"></div>
         <p id="processingStatus">Processing swap transaction...</p>
         <p id="processingStep" class="processing-step"></p>
+        <div id="processingSteps" class="processing-steps">
+          <!-- Processing steps will be added here dynamically -->
+        </div>
       </div>
     </div>
     
@@ -1366,7 +1800,7 @@ function getSwapFormHtml() {
       </div>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
         <button type="submit" id="submitButton">Process Swap</button>
       </div>
     </form>
@@ -1417,22 +1851,35 @@ function getSwapFormHtml() {
         e.preventDefault();
         
         // Show loading overlay
-        document.getElementById('loadingOverlay').style.display = 'block';
+        showLoadingOverlay("Processing swap transaction...");
         
-        // Disable submit button to prevent double submission
+        // Disable buttons to prevent double submission
         document.getElementById('submitButton').disabled = true;
+        document.getElementById('cancelButton').disabled = true;
         
-        // Set initial processing step
-        document.getElementById('processingStep').textContent = 'Validating swap data...';
+        // Set up initial processing steps
+        const fromCurrency = document.getElementById('fromCurrency').value;
+        const toCurrency = document.getElementById('toCurrency').value;
+        const steps = [
+          "Validating swap data",
+          `Creating sell transaction (${fromCurrency})`,
+          `Creating buy transaction (${toCurrency})`,
+          "Updating inventory"
+        ];
+        initializeProcessingSteps(steps);
+        setStepActive(0); // Set first step as active
+        
+        // Update processing step
+        updateProcessingStep("Validating swap data...");
         
         // Collect form data
         const formData = {
           date: document.getElementById('date').value,
           customer: document.getElementById('customer').value,
-          fromCurrency: document.getElementById('fromCurrency').value,
+          fromCurrency: fromCurrency,
           fromAmount: document.getElementById('fromAmount').value,
           sellRate: document.getElementById('sellRate').value,
-          toCurrency: document.getElementById('toCurrency').value,
+          toCurrency: toCurrency,
           toAmount: document.getElementById('toAmount').value,
           buyRate: document.getElementById('buyRate').value,
           source: document.getElementById('source').value,
@@ -1452,24 +1899,42 @@ function getSwapFormHtml() {
       
       // Success handler
       function onSuccess(result) {
-        // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
-        
-        // Enable submit button again
-        document.getElementById('submitButton').disabled = false;
+        // Update processing steps if provided
+        if (result.processingSteps) {
+          updateProcessingStepsFromResult(result.processingSteps);
+        }
         
         if (result.success) {
+          // Set all steps as complete
+          setAllStepsComplete();
+          
           // Show success message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
           messageDiv.className = 'success';
           messageDiv.style.display = 'block';
           
+          // Hide loading overlay after a short delay
+          setTimeout(function() {
+            hideLoadingOverlay();
+          }, 1000);
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Close the dialog after a delay
           setTimeout(function() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Hide loading overlay
+          hideLoadingOverlay();
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -1481,10 +1946,11 @@ function getSwapFormHtml() {
       // Failure handler
       function onFailure(error) {
         // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
+        hideLoadingOverlay();
         
-        // Enable submit button again
+        // Re-enable buttons
         document.getElementById('submitButton').disabled = false;
+        document.getElementById('cancelButton').disabled = false;
         
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
@@ -1492,9 +1958,100 @@ function getSwapFormHtml() {
         messageDiv.style.display = 'block';
       }
       
-      // Update processing step function
+      // Show loading overlay with message
+      function showLoadingOverlay(message) {
+        document.getElementById('loadingOverlay').style.display = 'block';
+        if (message) {
+          document.getElementById('processingStatus').textContent = message;
+        }
+      }
+      
+      // Hide loading overlay
+      function hideLoadingOverlay() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+      }
+      
+      // Update the processing step message
       function updateProcessingStep(step) {
         document.getElementById('processingStep').textContent = step;
+      }
+      
+      // Initialize processing steps display
+      function initializeProcessingSteps(steps) {
+        const stepsContainer = document.getElementById('processingSteps');
+        stepsContainer.innerHTML = '';
+        
+        steps.forEach((step, index) => {
+          const stepItem = document.createElement('div');
+          stepItem.className = 'step-item step-pending';
+          stepItem.id = 'step-' + index;
+          
+          stepItem.innerHTML = \`
+            <span class="step-indicator">\${index + 1}</span>
+            <span class="step-text">\${step}</span>
+          \`;
+          
+          stepsContainer.appendChild(stepItem);
+        });
+      }
+      
+      // Set a specific step as active (in progress)
+      function setStepActive(stepIndex) {
+        // First, make sure all previous steps are complete
+        for (let i = 0; i < stepIndex; i++) {
+          const step = document.getElementById('step-' + i);
+          if (step) {
+            step.className = 'step-item step-complete';
+          }
+        }
+        
+        // Set the current step as active
+        const currentStep = document.getElementById('step-' + stepIndex);
+        if (currentStep) {
+          currentStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark a specific step as complete
+      function setStepComplete(stepIndex) {
+        const step = document.getElementById('step-' + stepIndex);
+        if (step) {
+          step.className = 'step-item step-complete';
+        }
+        
+        // Set next step as active if available
+        const nextStep = document.getElementById('step-' + (stepIndex + 1));
+        if (nextStep) {
+          nextStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark all steps as complete
+      function setAllStepsComplete() {
+        const stepsContainer = document.getElementById('processingSteps');
+        const steps = stepsContainer.querySelectorAll('.step-item');
+        
+        steps.forEach(step => {
+          step.className = 'step-item step-complete';
+        });
+      }
+      
+      // Update processing steps based on server response
+      function updateProcessingStepsFromResult(steps) {
+        // Reinitialize with the actual steps from the server
+        initializeProcessingSteps(steps);
+        
+        // Show steps one by one with a delay to simulate progress
+        let i = 0;
+        const stepInterval = setInterval(function() {
+          setStepComplete(i);
+          i++;
+          
+          if (i >= steps.length - 1) {
+            clearInterval(stepInterval);
+            setAllStepsComplete();
+          }
+        }, 500);
       }
     </script>
   </body>
@@ -1596,6 +2153,44 @@ function getAdjustmentFormHtml() {
         font-size: 14px;
         color: #666;
       }
+      .processing-steps {
+        margin-top: 15px;
+        text-align: left;
+        max-width: 250px;
+        margin-left: auto;
+        margin-right: auto;
+      }
+      .step-item {
+        margin-bottom: 6px;
+        font-size: 13px;
+        color: #666;
+        display: flex;
+        align-items: center;
+      }
+      .step-indicator {
+        display: inline-block;
+        width: 18px;
+        height: 18px;
+        line-height: 18px;
+        background: #e0e0e0;
+        border-radius: 50%;
+        text-align: center;
+        margin-right: 8px;
+        font-size: 12px;
+        color: #fff;
+      }
+      .step-complete .step-indicator {
+        background: #4CAF50;
+      }
+      .step-active .step-indicator {
+        background: #2196F3;
+      }
+      .step-pending .step-indicator {
+        background: #e0e0e0;
+      }
+      .step-text {
+        flex: 1;
+      }
       @keyframes spin {
         0% { transform: rotate(0deg); }
         100% { transform: rotate(360deg); }
@@ -1613,6 +2208,9 @@ function getAdjustmentFormHtml() {
         <div class="spinner"></div>
         <p id="processingStatus">Processing adjustment...</p>
         <p id="processingStep" class="processing-step"></p>
+        <div id="processingSteps" class="processing-steps">
+          <!-- Processing steps will be added here dynamically -->
+        </div>
       </div>
     </div>
     
@@ -1642,7 +2240,7 @@ function getAdjustmentFormHtml() {
       </div>
       
       <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
+        <button type="button" class="cancel" id="cancelButton" onclick="google.script.host.close()">Cancel</button>
         <button type="submit" id="submitButton">Save Adjustment</button>
       </div>
     </form>
@@ -1653,19 +2251,31 @@ function getAdjustmentFormHtml() {
         e.preventDefault();
         
         // Show loading overlay
-        document.getElementById('loadingOverlay').style.display = 'block';
+        showLoadingOverlay("Processing adjustment...");
         
-        // Disable submit button to prevent double submission
+        // Disable buttons to prevent double submission
         document.getElementById('submitButton').disabled = true;
+        document.getElementById('cancelButton').disabled = true;
         
-        // Set initial processing step
-        document.getElementById('processingStep').textContent = 'Validating adjustment data...';
+        // Set up initial processing steps
+        const currency = document.getElementById('currency').value;
+        const amount = document.getElementById('amount').value;
+        const steps = [
+          "Validating adjustment data",
+          `Updating inventory for ${currency}`,
+          "Saving adjustment record"
+        ];
+        initializeProcessingSteps(steps);
+        setStepActive(0); // Set first step as active
+        
+        // Update processing step
+        updateProcessingStep("Validating adjustment data...");
         
         // Collect form data
         const formData = {
           date: document.getElementById('date').value,
-          currency: document.getElementById('currency').value,
-          amount: document.getElementById('amount').value,
+          currency: currency,
+          amount: amount,
           reason: document.getElementById('reason').value
         };
         
@@ -1678,24 +2288,42 @@ function getAdjustmentFormHtml() {
       
       // Success handler
       function onSuccess(result) {
-        // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
-        
-        // Enable submit button again
-        document.getElementById('submitButton').disabled = false;
+        // Update processing steps if provided
+        if (result.processingSteps) {
+          updateProcessingStepsFromResult(result.processingSteps);
+        }
         
         if (result.success) {
+          // Set all steps as complete
+          setAllStepsComplete();
+          
           // Show success message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
           messageDiv.className = 'success';
           messageDiv.style.display = 'block';
           
+          // Hide loading overlay after a short delay
+          setTimeout(function() {
+            hideLoadingOverlay();
+          }, 1000);
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Close the dialog after a delay
           setTimeout(function() {
             google.script.host.close();
           }, 2000);
         } else {
+          // Hide loading overlay
+          hideLoadingOverlay();
+          
+          // Re-enable buttons
+          document.getElementById('submitButton').disabled = false;
+          document.getElementById('cancelButton').disabled = false;
+          
           // Show error message
           const messageDiv = document.getElementById('message');
           messageDiv.innerHTML = result.message;
@@ -1707,10 +2335,11 @@ function getAdjustmentFormHtml() {
       // Failure handler
       function onFailure(error) {
         // Hide loading overlay
-        document.getElementById('loadingOverlay').style.display = 'none';
+        hideLoadingOverlay();
         
-        // Enable submit button again
+        // Re-enable buttons
         document.getElementById('submitButton').disabled = false;
+        document.getElementById('cancelButton').disabled = false;
         
         const messageDiv = document.getElementById('message');
         messageDiv.innerHTML = "Error: " + error.message;
@@ -1718,9 +2347,100 @@ function getAdjustmentFormHtml() {
         messageDiv.style.display = 'block';
       }
       
-      // Update processing step function
+      // Show loading overlay with message
+      function showLoadingOverlay(message) {
+        document.getElementById('loadingOverlay').style.display = 'block';
+        if (message) {
+          document.getElementById('processingStatus').textContent = message;
+        }
+      }
+      
+      // Hide loading overlay
+      function hideLoadingOverlay() {
+        document.getElementById('loadingOverlay').style.display = 'none';
+      }
+      
+      // Update the processing step message
       function updateProcessingStep(step) {
         document.getElementById('processingStep').textContent = step;
+      }
+      
+      // Initialize processing steps display
+      function initializeProcessingSteps(steps) {
+        const stepsContainer = document.getElementById('processingSteps');
+        stepsContainer.innerHTML = '';
+        
+        steps.forEach((step, index) => {
+          const stepItem = document.createElement('div');
+          stepItem.className = 'step-item step-pending';
+          stepItem.id = 'step-' + index;
+          
+          stepItem.innerHTML = \`
+            <span class="step-indicator">\${index + 1}</span>
+            <span class="step-text">\${step}</span>
+          \`;
+          
+          stepsContainer.appendChild(stepItem);
+        });
+      }
+      
+      // Set a specific step as active (in progress)
+      function setStepActive(stepIndex) {
+        // First, make sure all previous steps are complete
+        for (let i = 0; i < stepIndex; i++) {
+          const step = document.getElementById('step-' + i);
+          if (step) {
+            step.className = 'step-item step-complete';
+          }
+        }
+        
+        // Set the current step as active
+        const currentStep = document.getElementById('step-' + stepIndex);
+        if (currentStep) {
+          currentStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark a specific step as complete
+      function setStepComplete(stepIndex) {
+        const step = document.getElementById('step-' + stepIndex);
+        if (step) {
+          step.className = 'step-item step-complete';
+        }
+        
+        // Set next step as active if available
+        const nextStep = document.getElementById('step-' + (stepIndex + 1));
+        if (nextStep) {
+          nextStep.className = 'step-item step-active';
+        }
+      }
+      
+      // Mark all steps as complete
+      function setAllStepsComplete() {
+        const stepsContainer = document.getElementById('processingSteps');
+        const steps = stepsContainer.querySelectorAll('.step-item');
+        
+        steps.forEach(step => {
+          step.className = 'step-item step-complete';
+        });
+      }
+      
+      // Update processing steps based on server response
+      function updateProcessingStepsFromResult(steps) {
+        // Reinitialize with the actual steps from the server
+        initializeProcessingSteps(steps);
+        
+        // Show steps one by one with a delay to simulate progress
+        let i = 0;
+        const stepInterval = setInterval(function() {
+          setStepComplete(i);
+          i++;
+          
+          if (i >= steps.length - 1) {
+            clearInterval(stepInterval);
+            setAllStepsComplete();
+          }
+        }, 500);
       }
     </script>
   </body>
