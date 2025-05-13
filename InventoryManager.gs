@@ -16,6 +16,9 @@
  */
 function updateInventoryForDateRange(startDate, endDate) {
   try {
+    // Show loading indicator for this operation
+    showLoading("Updating inventory...");
+    
     // Default to today if no dates provided
     const start = startDate || new Date();
     start.setHours(0, 0, 0, 0); // Start of day
@@ -26,14 +29,33 @@ function updateInventoryForDateRange(startDate, endDate) {
     const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
     
     // Get all dates in the range
+    updateProcessingStatus("Calculating date range...");
     const dateRange = getDateRange(start, end);
     
     // For each date, update inventory for all currencies
+    let currentDate = 1;
+    const totalDates = dateRange.length;
+    
     for (const date of dateRange) {
-      for (const currency of currencies) {
+      const dateStr = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
+      updateProcessingStatus(`Processing date ${currentDate} of ${totalDates}`, `Date: ${dateStr}`);
+      
+      for (let i = 0; i < currencies.length; i++) {
+        const currency = currencies[i];
+        updateProcessingStatus(`Processing date ${currentDate} of ${totalDates}`, `Currency: ${currency}`);
         updateInventoryForDateAndCurrency(date, currency);
       }
+      
+      currentDate++;
     }
+    
+    // Final update to dashboard
+    updateProcessingStatus("Updating dashboard...");
+    updateDashboardInventory();
+    
+    // Update running balances
+    updateProcessingStatus("Updating running balances...");
+    updateRunningBalances();
     
     return {
       success: true,
@@ -45,6 +67,9 @@ function updateInventoryForDateRange(startDate, endDate) {
       success: false,
       message: `Error updating inventory: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Inventory update completed", "Complete", 3);
   }
 }
 
@@ -63,6 +88,8 @@ function updateInventoryForTransaction(transactionId) {
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
     // Find the transaction
+    updateProcessingStatus("Finding transaction details...");
+    
     const transactions = transactionSheet.getDataRange().getValues();
     const headers = transactions[0];
     const idIndex = 0; // Transaction ID is always the first column
@@ -94,12 +121,15 @@ function updateInventoryForTransaction(transactionId) {
     }
     
     // Update inventory for the transaction's date and currency
+    updateProcessingStatus(`Updating inventory for ${transaction.currency}...`);
     const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
     
     // Update dashboard inventory
+    updateProcessingStatus("Updating dashboard display...");
     updateDashboardInventory();
     
     // Update running balances
+    updateProcessingStatus("Updating running balances...");
     updateRunningBalances();
     
     return {
@@ -134,6 +164,8 @@ function updateInventoryForDateAndCurrency(date, currency) {
     // Format date to string for comparison
     const dateString = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     
+    updateProcessingStatus("Finding transactions for date and currency...");
+    
     // Get all transactions for this date and currency
     const transactions = transactionSheet.getDataRange().getValues();
     
@@ -159,6 +191,8 @@ function updateInventoryForDateAndCurrency(date, currency) {
         // Note: Swap transactions should already be recorded as Buy/Sell pairs
       }
     }
+    
+    updateProcessingStatus("Creating or updating inventory entry...");
     
     // Get or create inventory entry for this date and currency
     const inventoryEntry = findOrCreateInventoryEntry(date, currency);
@@ -225,8 +259,12 @@ function findOrCreateInventoryEntry(date, currency) {
     
     // If entry doesn't exist, create it
     if (rowIndex === -1) {
+      updateProcessingStatus("Entry not found, calculating previous day balance...");
+      
       // Find the closing balance from the previous date
       const previousDayBalance = findPreviousDayClosingBalance(date, currency);
+      
+      updateProcessingStatus("Creating new inventory entry...");
       
       // Add new row
       inventorySheet.appendRow([
@@ -329,6 +367,8 @@ function updateRunningBalances() {
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
+    updateProcessingStatus("Checking balance columns...");
+    
     // Check if running balance columns exist, create them if not
     const headers = transactionSheet.getRange(1, 1, 1, transactionSheet.getLastColumn()).getValues()[0];
     
@@ -342,6 +382,7 @@ function updateRunningBalances() {
       
       if (colIndex === 0) {
         // Column doesn't exist, create it
+        updateProcessingStatus(`Creating balance column for ${currency}...`);
         colIndex = transactionSheet.getLastColumn() + 1;
         transactionSheet.getRange(1, colIndex).setValue(colName);
         transactionSheet.getRange(1, colIndex).setFontWeight('bold');
@@ -350,11 +391,14 @@ function updateRunningBalances() {
       balanceColumns[currency] = colIndex;
     }
     
+    updateProcessingStatus("Loading transaction data...");
+    
     // Get all transactions and sort by date
     const dataRange = transactionSheet.getRange(2, 1, transactionSheet.getLastRow() - 1, transactionSheet.getLastColumn());
     const transactions = dataRange.getValues();
     
     // Sort transactions by date
+    updateProcessingStatus("Sorting transactions by date...");
     transactions.sort((a, b) => {
       if (!a[1]) return -1;
       if (!b[1]) return 1;
@@ -370,6 +414,7 @@ function updateRunningBalances() {
     };
     
     // Reset balance columns
+    updateProcessingStatus("Resetting balance columns...");
     for (const currency of currencies) {
       if (balanceColumns[currency]) {
         transactionSheet.getRange(2, balanceColumns[currency], transactions.length, 1).clearContent();
@@ -377,8 +422,14 @@ function updateRunningBalances() {
     }
     
     // Write transactions back to sheet in date order and calculate running balances
+    updateProcessingStatus("Calculating running balances...");
     for (let i = 0; i < transactions.length; i++) {
       const rowIndex = i + 2; // +2 because we start at row 2 (after header)
+      
+      // Show progress for large transaction sets
+      if (i % 100 === 0) {
+        updateProcessingStatus(`Processing transaction ${i+1} of ${transactions.length}...`);
+      }
       
       // Write back to sheet in sorted order
       for (let j = 0; j < transactions[i].length; j++) {
@@ -463,6 +514,7 @@ function updateDashboardInventory() {
     // Update balance for each currency
     for (let i = 0; i < currencies.length; i++) {
       const currency = currencies[i];
+      updateProcessingStatus(`Updating dashboard for ${currency}...`);
       const balance = getCurrentBalance(currency);
       
       // Dashboard currency balances are at rows 6-9
@@ -489,11 +541,15 @@ function updateDashboardInventory() {
  */
 function recordInventoryAdjustment(adjustmentData) {
   try {
+    showLoading("Recording inventory adjustment...");
+    
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const inventorySheet = ss.getSheetByName(SHEET_DAILY_INVENTORY);
     
     // Format date
     const date = new Date(adjustmentData.date);
+    
+    updateProcessingStatus("Finding or creating inventory entry...");
     
     // Find or create inventory entry
     const inventoryEntry = findOrCreateInventoryEntry(date, adjustmentData.currency);
@@ -504,6 +560,7 @@ function recordInventoryAdjustment(adjustmentData) {
     const { rowIndex } = inventoryEntry;
     
     // Update adjustment column
+    updateProcessingStatus("Applying adjustment...");
     const currentAdjustment = inventorySheet.getRange(rowIndex, 6).getValue() || 0;
     const newAdjustment = currentAdjustment + adjustmentData.amount;
     
@@ -519,6 +576,7 @@ function recordInventoryAdjustment(adjustmentData) {
     notesRange.setValue(newNote);
     
     // Update dashboard
+    updateProcessingStatus("Updating dashboard...");
     updateDashboardInventory();
     
     return {
@@ -531,6 +589,9 @@ function recordInventoryAdjustment(adjustmentData) {
       success: false,
       message: `Error recording inventory adjustment: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Adjustment completed", "Complete", 3);
   }
 }
 
@@ -541,8 +602,12 @@ function recordInventoryAdjustment(adjustmentData) {
  */
 function reconcileInventory(date) {
   try {
+    showLoading("Reconciling inventory...");
+    
     const reconcileDate = date || new Date();
     const currencies = ['USD', 'GBP', 'EUR', 'NAIRA'];
+    
+    updateProcessingStatus("Setting up reconciliation...");
     
     const results = {
       success: true,
@@ -553,6 +618,7 @@ function reconcileInventory(date) {
     
     // Reconcile each currency
     for (const currency of currencies) {
+      updateProcessingStatus(`Reconciling ${currency}...`);
       const result = reconcileCurrency(reconcileDate, currency);
       results.currencies[currency] = result;
       
@@ -569,6 +635,9 @@ function reconcileInventory(date) {
       success: false,
       message: `Error reconciling inventory: ${error.toString()}`
     };
+  } finally {
+    // Close the loading dialog by refreshing the UI
+    SpreadsheetApp.getActiveSpreadsheet().toast("Reconciliation completed", "Complete", 3);
   }
 }
 
@@ -588,6 +657,7 @@ function reconcileCurrency(date, currency) {
     const dateString = Utilities.formatDate(date, Session.getScriptTimeZone(), 'yyyy-MM-dd');
     
     // Get inventory entry
+    updateProcessingStatus(`Finding inventory entry for ${dateString}...`);
     const inventoryEntry = findOrCreateInventoryEntry(date, currency);
     if (!inventoryEntry.success) {
       return {
@@ -607,6 +677,7 @@ function reconcileCurrency(date, currency) {
     const closingBalance = inventorySheet.getRange(rowIndex, 7).getValue() || 0;
     
     // Calculate expected values from transactions
+    updateProcessingStatus("Calculating expected values from transactions...");
     const transactions = transactionSheet.getDataRange().getValues();
     
     let calculatedPurchases = 0;
@@ -634,12 +705,14 @@ function reconcileCurrency(date, currency) {
     const expectedClosingBalance = openingBalance + calculatedPurchases - calculatedSales + adjustments;
     
     // Check if values match
+    updateProcessingStatus("Checking for discrepancies...");
     const purchasesMatch = Math.abs(recordedPurchases - calculatedPurchases) < 0.01;
     const salesMatch = Math.abs(recordedSales - calculatedSales) < 0.01;
     const balanceMatch = Math.abs(closingBalance - expectedClosingBalance) < 0.01;
     
     // Update inventory if values don't match
     if (!purchasesMatch || !salesMatch) {
+      updateProcessingStatus("Correcting discrepancies...");
       inventorySheet.getRange(rowIndex, 4).setValue(calculatedPurchases);
       inventorySheet.getRange(rowIndex, 5).setValue(calculatedSales);
     }
@@ -679,13 +752,16 @@ function updateDailyInventory() {
     showLoading("Updating daily inventory...");
     
     // Update inventory for today
+    updateProcessingStatus("Processing today's inventory...");
     const today = new Date();
     const result = updateInventoryForDateRange(today, today);
     
     // Update dashboard after inventory update
+    updateProcessingStatus("Updating dashboard...");
     updateDashboardInventory();
     
     // Update running balances
+    updateProcessingStatus("Updating running balances...");
     updateRunningBalances();
     
     // Show completion message
