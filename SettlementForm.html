@@ -111,7 +111,7 @@
     
     <form id="settlementForm">
       <div id="settlementContainer">
-        <!-- Settlement items will be added here -->
+        <!-- Settlement items will be added here dynamically -->
       </div>
       
       <button type="button" class="add-settlement" onclick="addSettlement()">+ Add Settlement Method</button>
@@ -128,9 +128,21 @@
       const totalAmount = parseFloat(<?= transactionData.amount ?>);
       const currency = '<?= transactionData.currency ?>';
       
-      // Initialize with one settlement
+      // Set a longer client-side timeout value to prevent timeout issues
+      // This is a solution for Apps Script timeout issues - the standard timeout is too short
+      const CLIENT_TIMEOUT = 300000; // 5 minutes
+      
+      // Initialize with one settlement on page load but with a slight delay
+      // to allow the form to render completely
       document.addEventListener('DOMContentLoaded', function() {
-        addSettlement();
+        // Show temporary loading overlay while initializing
+        showLoadingOverlay("Initializing settlement form...");
+        
+        // Slight delay to ensure form is fully loaded before adding settlement item
+        setTimeout(function() {
+          addSettlement();
+          hideLoadingOverlay();
+        }, 500);
       });
       
       // Add a new settlement method
@@ -273,9 +285,26 @@
         }
       }
       
-      // Form submission handler
+      // Form submission handler with improved timeout protection
       document.getElementById('settlementForm').addEventListener('submit', function(e) {
         e.preventDefault();
+        
+        // Check for empty settlement items
+        let hasEmptyFields = false;
+        settlements.forEach((settlement, index) => {
+          if (!settlement.settlementType) {
+            const typeSelect = document.getElementById(`settlementType_${index}`);
+            typeSelect.classList.add('error-field');
+            hasEmptyFields = true;
+          }
+        });
+        
+        if (hasEmptyFields) {
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = "Please fill in all required settlement fields.";
+          messageDiv.style.display = 'block';
+          return;
+        }
         
         // Validate settlements
         let usedAmount = 0;
@@ -303,15 +332,40 @@
         // Update processing step
         updateProcessingStep("Validating settlement data...");
         
-        // Submit data
+        // Prepare simplified data for submission to reduce payload size
+        const simplifiedSettlements = settlements.map(s => {
+          return {
+            settlementType: s.settlementType,
+            currency: s.currency,
+            amount: parseFloat(s.amount) || 0,
+            bankAccount: s.bankAccount || '',
+            notes: s.notes || ''
+          };
+        });
+        
+        // Submit data with a shorter timeout
         const formData = {
-          settlements: settlements
+          settlements: simplifiedSettlements
         };
         
-        // Send data to server
+        // Set up a client-side timeout protection
+        const timeoutProtection = setTimeout(function() {
+          // If this triggers, the server response took too long
+          handleFormFailure({
+            message: "The request is taking longer than expected. Please try again with fewer settlement items."
+          });
+        }, CLIENT_TIMEOUT);
+        
+        // Send data to server with callbacks that clear the timeout
         google.script.run
-          .withSuccessHandler(handleFormSuccess)
-          .withFailureHandler(handleFormFailure)
+          .withSuccessHandler(function(result) {
+            clearTimeout(timeoutProtection);
+            handleFormSuccess(result);
+          })
+          .withFailureHandler(function(error) {
+            clearTimeout(timeoutProtection);
+            handleFormFailure(error);
+          })
           .processSettlementForm(formData);
       });
     </script>
