@@ -32,6 +32,16 @@ FOREX.Core.init = function() {
       window.showInventoryAdjustmentForm = FOREX.Forms.showInventoryAdjustmentForm;
     }
     
+    // HTML Template functions
+    if (typeof FOREX.Templates !== 'undefined') {
+      window.getTransactionFormHtml = FOREX.Templates.getTransactionFormHtml;
+      window.getSettlementFormHtml = FOREX.Templates.getSettlementFormHtml;
+      window.getSwapFormHtml = FOREX.Templates.getSwapFormHtml;
+      window.getAdjustmentFormHtml = FOREX.Templates.getAdjustmentFormHtml;
+      window.getProgressIndicatorHtml = FOREX.Templates.getProgressIndicatorHtml;
+      window.includeProgressIndicator = FOREX.Templates.includeProgressIndicator;
+    }
+    
     // Transaction functions
     if (typeof FOREX.Transactions !== 'undefined') {
       window.createTransaction = FOREX.Transactions.createTransaction;
