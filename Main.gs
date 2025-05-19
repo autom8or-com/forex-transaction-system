@@ -143,7 +143,12 @@ function setupSystem() {
   setupDashboardSheet();
   
   // Create HTML template files for forms
-  createHtmlTemplates();
+  // Use FOREX.Utils.createHtmlTemplates if available, otherwise fall back to global function
+  if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.createHtmlTemplates) {
+    FOREX.Utils.createHtmlTemplates();
+  } else {
+    createHtmlTemplates();
+  }
   
   // Initialize FOREX system
   if (typeof FOREX !== 'undefined') {
@@ -409,30 +414,60 @@ function updateDailyInventory() {
  * Generates a daily summary report
  */
 function generateDailyReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The daily report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && FOREX.Reports && FOREX.Reports.generateDailyReport) {
+      // Use the namespace version if available
+      return FOREX.Reports.generateDailyReport();
+    } else {
+      // Fallback to old implementation
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Not Implemented', 'The daily report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating daily report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating daily report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
  * Generates a staff performance report
  */
 function generateStaffReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The staff report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && FOREX.Reports && FOREX.Reports.generateStaffReport) {
+      // Use the namespace version if available
+      return FOREX.Reports.generateStaffReport();
+    } else {
+      // Fallback to old implementation
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Not Implemented', 'The staff report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating staff report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating staff report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
  * Generates a customer analytics report
  */
 function generateCustomerReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The customer report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && FOREX.Reports && FOREX.Reports.generateCustomerReport) {
+      // Use the namespace version if available
+      return FOREX.Reports.generateCustomerReport();
+    } else {
+      // Fallback to old implementation
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Not Implemented', 'The customer report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating customer report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating customer report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
@@ -442,20 +477,41 @@ function createHtmlTemplates() {
   const ui = SpreadsheetApp.getUi();
   
   try {
+    // Delegate to the FOREX.Utils implementation if available
+    if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.createHtmlTemplates) {
+      return FOREX.Utils.createHtmlTemplates();
+    }
+    
+    // Fallback implementation
     // Create Transaction Form HTML
-    createHtmlFile('TransactionForm', getTransactionFormHtml());
+    const transactionHtml = (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getTransactionFormHtml) 
+      ? FOREX.Templates.getTransactionFormHtml() 
+      : getTransactionFormHtml();
+    createHtmlFile('TransactionForm', transactionHtml);
     
     // Create Settlement Form HTML
-    createHtmlFile('SettlementForm', getSettlementFormHtml());
+    const settlementHtml = (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getSettlementFormHtml) 
+      ? FOREX.Templates.getSettlementFormHtml() 
+      : getSettlementFormHtml();
+    createHtmlFile('SettlementForm', settlementHtml);
     
     // Create Swap Form HTML
-    createHtmlFile('SwapForm', getSwapFormHtml());
+    const swapHtml = (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getSwapFormHtml) 
+      ? FOREX.Templates.getSwapFormHtml() 
+      : getSwapFormHtml();
+    createHtmlFile('SwapForm', swapHtml);
     
     // Create Adjustment Form HTML
-    createHtmlFile('AdjustmentForm', getAdjustmentFormHtml());
+    const adjustmentHtml = (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getAdjustmentFormHtml) 
+      ? FOREX.Templates.getAdjustmentFormHtml() 
+      : getAdjustmentFormHtml();
+    createHtmlFile('AdjustmentForm', adjustmentHtml);
     
     // Create Progress Indicator HTML
-    createHtmlFile('ProgressIndicator', getProgressIndicatorHtml());
+    const progressHtml = (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getProgressIndicatorHtml) 
+      ? FOREX.Templates.getProgressIndicatorHtml() 
+      : getProgressIndicatorHtml();
+    createHtmlFile('ProgressIndicator', progressHtml);
     
     return true;
   } catch (error) {
@@ -473,6 +529,12 @@ function createHtmlTemplates() {
  */
 function createHtmlFile(filename, content) {
   try {
+    // Delegate to the FOREX.Utils implementation if available
+    if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.createHtmlFile) {
+      return FOREX.Utils.createHtmlFile(filename, content);
+    }
+    
+    // Fallback implementation
     // Create or update the HTML file
     const htmlOutput = HtmlService.createHtmlOutput(content)
       .setTitle(filename);
@@ -491,6 +553,12 @@ function createHtmlFile(filename, content) {
  * @return {Object} Configuration settings
  */
 function getConfigSettings() {
+  // Delegate to the FOREX.Utils implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.getConfigSettings) {
+    return FOREX.Utils.getConfigSettings();
+  }
+  
+  // Fallback implementation
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const configSheet = ss.getSheetByName(SHEET_CONFIG);
   
@@ -513,6 +581,12 @@ function getConfigSettings() {
  * @return {string} Camel-cased string
  */
 function camelCase(str) {
+  // Delegate to the FOREX.Utils implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.camelCase) {
+    return FOREX.Utils.camelCase(str);
+  }
+  
+  // Fallback implementation
   return str
     .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
     .replace(/\s/g, '')
@@ -521,388 +595,76 @@ function camelCase(str) {
 
 /**
  * Returns the HTML content for the progress indicator
- * This will be delegated to the FOREX.Utils module in the full implementation
+ * This function is maintained for backward compatibility but delegates to FOREX.Templates
  * @return {string} HTML content
  */
 function getProgressIndicatorHtml() {
-  return `<!-- Standardized Progress Indicator Component -->
-<style>
-  /* Loading overlay styles */
-  .loading-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(255, 255, 255, 0.8);
-    z-index: 1000;
+  // Delegate to the FOREX.Templates implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getProgressIndicatorHtml) {
+    return FOREX.Templates.getProgressIndicatorHtml();
   }
   
-  .loading-spinner {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-  }
-  
-  .spinner {
-    border: 8px solid #f3f3f3;
-    border-radius: 50%;
-    border-top: 8px solid #3498db;
-    width: 60px;
-    height: 60px;
-    margin: 20px auto;
-    animation: spin 2s linear infinite;
-  }
-  
-  .processing-status {
-    font-size: 16px;
-    font-weight: bold;
-    color: #333;
-    margin-bottom: 10px;
-  }
-  
-  .processing-step {
-    margin-top: 10px;
-    font-size: 14px;
-    color: #666;
-  }
-  
-  .processing-steps {
-    margin-top: 15px;
-    text-align: left;
-    max-width: 280px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  
-  .step-item {
-    margin-bottom: 6px;
-    font-size: 13px;
-    color: #666;
-    display: flex;
-    align-items: center;
-  }
-  
-  .step-indicator {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    line-height: 18px;
-    background: #e0e0e0;
-    border-radius: 50%;
-    text-align: center;
-    margin-right: 8px;
-    font-size: 12px;
-    color: #fff;
-  }
-  
-  .step-complete .step-indicator {
-    background: #4CAF50;
-  }
-  
-  .step-active .step-indicator {
-    background: #2196F3;
-  }
-  
-  .step-pending .step-indicator {
-    background: #e0e0e0;
-  }
-  
-  .step-text {
-    flex: 1;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-</style>
-
-<!-- Loading overlay HTML template -->
-<div id="loadingOverlay" class="loading-overlay">
-  <div class="loading-spinner">
-    <div class="spinner"></div>
-    <p id="processingStatus" class="processing-status">Processing...</p>
-    <p id="processingStep" class="processing-step"></p>
-    <div id="processingSteps" class="processing-steps">
-      <!-- Processing steps will be added here dynamically -->
-    </div>
-  </div>
-</div>
-
-<script>
-  // Show loading overlay with message
-  function showLoadingOverlay(message) {
-    document.getElementById('loadingOverlay').style.display = 'block';
-    if (message) {
-      document.getElementById('processingStatus').textContent = message;
-    }
-    // Disable all buttons while processing
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(button => {
-      button.disabled = true;
-    });
-  }
-  
-  // Hide loading overlay
-  function hideLoadingOverlay() {
-    document.getElementById('loadingOverlay').style.display = 'none';
-    // Re-enable all buttons
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(button => {
-      button.disabled = false;
-    });
-  }
-  
-  // Update the processing step message
-  function updateProcessingStep(step) {
-    document.getElementById('processingStep').textContent = step;
-  }
-  
-  // Initialize processing steps display
-  function initializeProcessingSteps(steps) {
-    const stepsContainer = document.getElementById('processingSteps');
-    stepsContainer.innerHTML = '';
-    
-    steps.forEach((step, index) => {
-      const stepItem = document.createElement('div');
-      stepItem.className = 'step-item step-pending';
-      stepItem.id = 'step-' + index;
-      
-      stepItem.innerHTML = \`
-        <span class="step-indicator">\${index + 1}</span>
-        <span class="step-text">\${step}</span>
-      \`;
-      
-      stepsContainer.appendChild(stepItem);
-    });
-  }
-  
-  // Set a specific step as active (in progress)
-  function setStepActive(stepIndex) {
-    // First, make sure all previous steps are complete
-    for (let i = 0; i < stepIndex; i++) {
-      const step = document.getElementById('step-' + i);
-      if (step) {
-        step.className = 'step-item step-complete';
-      }
-    }
-    
-    // Set the current step as active
-    const currentStep = document.getElementById('step-' + stepIndex);
-    if (currentStep) {
-      currentStep.className = 'step-item step-active';
-    }
-  }
-  
-  // Mark a specific step as complete
-  function setStepComplete(stepIndex) {
-    const step = document.getElementById('step-' + stepIndex);
-    if (step) {
-      step.className = 'step-item step-complete';
-    }
-    
-    // Set next step as active if available
-    const nextStep = document.getElementById('step-' + (stepIndex + 1));
-    if (nextStep) {
-      nextStep.className = 'step-item step-active';
-    }
-  }
-  
-  // Mark all steps as complete
-  function setAllStepsComplete() {
-    const stepsContainer = document.getElementById('processingSteps');
-    const steps = stepsContainer.querySelectorAll('.step-item');
-    
-    steps.forEach(step => {
-      step.className = 'step-item step-complete';
-    });
-  }
-  
-  // Update processing steps based on server response
-  function updateProcessingStepsFromResult(steps) {
-    // Reinitialize with the actual steps from the server
-    initializeProcessingSteps(steps);
-    
-    // Show steps one by one with a delay to simulate progress
-    let i = 0;
-    const stepInterval = setInterval(function() {
-      setStepComplete(i);
-      i++;
-      
-      if (i >= steps.length - 1) {
-        clearInterval(stepInterval);
-        setAllStepsComplete();
-      }
-    }, 500);
-  }
-  
-  // Initialize transaction processing with default steps based on transaction type
-  function initTransactionProcessing(transactionType) {
-    let steps = [];
-    
-    switch(transactionType) {
-      case 'transaction':
-        steps = [
-          "Validating transaction data",
-          "Creating transaction record",
-          "Processing settlement",
-          "Updating inventory"
-        ];
-        break;
-      case 'settlement':
-        steps = [
-          "Validating settlement data",
-          "Processing settlement legs",
-          "Creating transaction record",
-          "Updating inventory"
-        ];
-        break;
-      case 'swap':
-        steps = [
-          "Validating swap data",
-          "Creating sell transaction",
-          "Creating buy transaction",
-          "Updating inventory"
-        ];
-        break;
-      case 'adjustment':
-        steps = [
-          "Validating adjustment data",
-          "Updating inventory",
-          "Saving adjustment record"
-        ];
-        break;
-      default:
-        steps = [
-          "Processing data",
-          "Saving records",
-          "Completing operation"
-        ];
-    }
-    
-    // Initialize the steps display
-    initializeProcessingSteps(steps);
-    setStepActive(0); // Set first step as active
-  }
-  
-  // Handle form success with progress updates
-  function handleFormSuccess(result) {
-    // Update processing steps if provided
-    if (result.processingSteps) {
-      updateProcessingStepsFromResult(result.processingSteps);
-    }
-    
-    if (result.success) {
-      // Set all steps as complete
-      setAllStepsComplete();
-      
-      // Show success message
-      const messageDiv = document.getElementById('message');
-      if (messageDiv) {
-        messageDiv.innerHTML = result.message;
-        messageDiv.className = 'success';
-        messageDiv.style.display = 'block';
-      }
-      
-      // Hide loading overlay after a short delay
-      setTimeout(function() {
-        hideLoadingOverlay();
-      }, 1000);
-      
-      // Close the dialog after a delay if autoClose is true
-      if (result.closeForm !== false) {
-        setTimeout(function() {
-          google.script.host.close();
-        }, 2000);
-      }
-    } else {
-      // Handle special cases
-      if (result.showSettlementForm) {
-        // Update processing status before redirection
-        updateProcessingStep("Opening settlement form...");
-        
-        // Short delay before redirect to show the final status
-        setTimeout(function() {
-          google.script.run.showSettlementForm();
-          google.script.host.close();
-        }, 1000);
-      } else if (result.showSwapForm) {
-        // Update processing status before redirection
-        updateProcessingStep("Opening swap form...");
-        
-        // Short delay before redirect
-        setTimeout(function() {
-          google.script.run.showSwapForm();
-          google.script.host.close();
-        }, 1000);
-      } else {
-        // Hide loading overlay
-        hideLoadingOverlay();
-        
-        // Show error message
-        const messageDiv = document.getElementById('message');
-        if (messageDiv) {
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'error';
-          messageDiv.style.display = 'block';
-        }
-      }
-    }
-  }
-  
-  // Handle form failure with error display
-  function handleFormFailure(error) {
-    // Hide loading overlay
-    hideLoadingOverlay();
-    
-    // Show error message
-    const messageDiv = document.getElementById('message');
-    if (messageDiv) {
-      messageDiv.innerHTML = "Error: " + (error.message || error);
-      messageDiv.className = 'error';
-      messageDiv.style.display = 'block';
-    }
-  }
-</script>`;
+  // Fallback to empty implementation - this should not be called if properly setup
+  return '';
 }
 
 /**
  * Returns the HTML content for the transaction form
+ * This function is maintained for backward compatibility but delegates to FOREX.Templates
  * @return {string} HTML content
  */
 function getTransactionFormHtml() {
-  // Implementation in FormHandlers.gs
+  // Delegate to the FOREX.Templates implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getTransactionFormHtml) {
+    return FOREX.Templates.getTransactionFormHtml();
+  }
+  
+  // Fallback to empty implementation - this should not be called if properly setup
   return '';
 }
 
 /**
  * Returns the HTML content for the settlement form
+ * This function is maintained for backward compatibility but delegates to FOREX.Templates
  * @return {string} HTML content
  */
 function getSettlementFormHtml() {
-  // Implementation in FormHandlers.gs
+  // Delegate to the FOREX.Templates implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getSettlementFormHtml) {
+    return FOREX.Templates.getSettlementFormHtml();
+  }
+  
+  // Fallback to empty implementation - this should not be called if properly setup
   return '';
 }
 
 /**
  * Returns the HTML content for the swap form
+ * This function is maintained for backward compatibility but delegates to FOREX.Templates
  * @return {string} HTML content
  */
 function getSwapFormHtml() {
-  // Implementation in FormHandlers.gs
+  // Delegate to the FOREX.Templates implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getSwapFormHtml) {
+    return FOREX.Templates.getSwapFormHtml();
+  }
+  
+  // Fallback to empty implementation - this should not be called if properly setup
   return '';
 }
 
 /**
  * Returns the HTML content for the adjustment form
+ * This function is maintained for backward compatibility but delegates to FOREX.Templates
  * @return {string} HTML content
  */
 function getAdjustmentFormHtml() {
-  // Implementation in FormHandlers.gs
+  // Delegate to the FOREX.Templates implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Templates && FOREX.Templates.getAdjustmentFormHtml) {
+    return FOREX.Templates.getAdjustmentFormHtml();
+  }
+  
+  // Fallback to empty implementation - this should not be called if properly setup
   return '';
 }
 
