@@ -14,9 +14,14 @@ const SHEET_DASHBOARD = 'Dashboard';
 
 /**
  * Runs when the spreadsheet is opened
- * Creates custom menu
+ * Creates custom menu and initializes FOREX system
  */
 function onOpen() {
+  // Initialize the FOREX namespace system
+  if (typeof FOREX !== 'undefined') {
+    FOREX.Core.init();
+  }
+  
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Forex System')
     .addItem('New Transaction', 'showTransactionForm')
@@ -139,6 +144,11 @@ function setupSystem() {
   
   // Create HTML template files for forms
   createHtmlTemplates();
+  
+  // Initialize FOREX system
+  if (typeof FOREX !== 'undefined') {
+    FOREX.Core.init();
+  }
   
   ui.alert('Setup Complete', 'The Forex Transaction System has been set up successfully.', ui.ButtonSet.OK);
 }
@@ -376,12 +386,23 @@ function setupDashboardSheet() {
 
 /**
  * Updates the daily inventory sheet with latest transaction data
+ * This delegates to the FOREX.Inventory module
  */
 function updateDailyInventory() {
-  // This will be implemented in InventoryManager.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The inventory update will be implemented in InventoryManager.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && FOREX.Inventory && FOREX.Inventory.updateDailyInventory) {
+      // Use the namespace version if available
+      return FOREX.Inventory.updateDailyInventory();
+    } else {
+      // Fallback to old implementation
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Not Implemented', 'The inventory update will be implemented in InventoryManager.gs', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error updating inventory: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error updating inventory: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
@@ -500,6 +521,7 @@ function camelCase(str) {
 
 /**
  * Returns the HTML content for the progress indicator
+ * This will be delegated to the FOREX.Utils module in the full implementation
  * @return {string} HTML content
  */
 function getProgressIndicatorHtml() {
@@ -853,397 +875,146 @@ function getProgressIndicatorHtml() {
  * @return {string} HTML content
  */
 function getTransactionFormHtml() {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        margin: 0;
-        padding: 10px;
-      }
-      .form-group {
-        margin-bottom: 15px;
-      }
-      label {
-        display: block;
-        margin-bottom: 5px;
-        font-weight: bold;
-      }
-      input[type="text"], 
-      input[type="number"], 
-      input[type="date"], 
-      select, 
-      textarea {
-        width: 100%;
-        padding: 8px;
-        border: 1px solid #ddd;
-        border-radius: 4px;
-        box-sizing: border-box;
-      }
-      .button-group {
-        margin-top: 20px;
-        text-align: right;
-      }
-      button {
-        padding: 8px 16px;
-        background-color: #4285f4;
-        color: white;
-        border: none;
-        border-radius: 4px;
-        cursor: pointer;
-      }
-      button.cancel {
-        background-color: #f1f1f1;
-        color: #333;
-        margin-right: 10px;
-      }
-      .error {
-        color: red;
-        margin-bottom: 15px;
-      }
-      .success {
-        color: green;
-        margin-bottom: 15px;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>New Transaction</h2>
-    
-    <div id="message" class="error" style="display:none;"></div>
-    
-    <form id="transactionForm">
-      <div class="form-group">
-        <label for="date">Date</label>
-        <input type="date" id="date" name="date" value="<?= today ?>" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="customer">Customer</label>
-        <input type="text" id="customer" name="customer" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="transactionType">Transaction Type</label>
-        <select id="transactionType" name="transactionType" required>
-          <? for (var i = 0; i < transactionTypes.length; i++) { ?>
-            <option value="<?= transactionTypes[i] ?>"><?= transactionTypes[i] ?></option>
-          <? } ?>
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label for="currency">Currency</label>
-        <select id="currency" name="currency" required>
-          <? for (var i = 0; i < currencies.length; i++) { ?>
-            <option value="<?= currencies[i] ?>" <?= currencies[i] === defaultCurrency ? 'selected' : '' ?>><?= currencies[i] ?></option>
-          <? } ?>
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label for="amount">Amount</label>
-        <input type="number" id="amount" name="amount" step="0.01" min="0" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="rate">Rate</label>
-        <input type="number" id="rate" name="rate" step="0.01" min="0" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="nature">Nature of Transaction</label>
-        <input type="text" id="nature" name="nature" required>
-      </div>
-      
-      <div class="form-group">
-        <label for="source">Source</label>
-        <select id="source" name="source" required>
-          <option value="Walk-in">Walk-in</option>
-          <option value="Bank Transfer">Bank Transfer</option>
-          <option value="Referral">Referral</option>
-          <option value="Other">Other</option>
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label for="staff">Staff</label>
-        <select id="staff" name="staff" required>
-          <? for (var i = 0; i < staffList.length; i++) { ?>
-            <option value="<?= staffList[i] ?>"><?= staffList[i] ?></option>
-          <? } ?>
-        </select>
-      </div>
-      
-      <div class="form-group">
-        <label for="notes">Notes</label>
-        <textarea id="notes" name="notes" rows="3"></textarea>
-      </div>
-      
-      <div class="form-group">
-        <label for="multiSettlement">Multiple Settlement Methods?</label>
-        <select id="multiSettlement" name="multiSettlement">
-          <option value="no">No</option>
-          <option value="yes">Yes</option>
-        </select>
-      </div>
-      
-      <div class="button-group">
-        <button type="button" class="cancel" onclick="google.script.host.close()">Cancel</button>
-        <button type="submit">Save Transaction</button>
-      </div>
-    </form>
-    
-    <script>
-      // Form submission handler
-      document.getElementById('transactionForm').addEventListener('submit', function(e) {
-        e.preventDefault();
-        
-        // Collect form data
-        const formData = {
-          date: document.getElementById('date').value,
-          customer: document.getElementById('customer').value,
-          transactionType: document.getElementById('transactionType').value,
-          currency: document.getElementById('currency').value,
-          amount: document.getElementById('amount').value,
-          rate: document.getElementById('rate').value,
-          nature: document.getElementById('nature').value,
-          source: document.getElementById('source').value,
-          staff: document.getElementById('staff').value,
-          notes: document.getElementById('notes').value,
-          multiSettlement: document.getElementById('multiSettlement').value
-        };
-        
-        // Send data to server
-        google.script.run
-          .withSuccessHandler(onSuccess)
-          .withFailureHandler(onFailure)
-          .processTransactionForm(formData);
-      });
-      
-      // Success handler
-      function onSuccess(result) {
-        if (result.success) {
-          if (result.showSettlementForm) {
-            // Redirect to settlement form
-            google.script.run.showSettlementForm();
-            google.script.host.close();
-          } else {
-            // Show success message
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = result.message;
-            messageDiv.className = 'success';
-            messageDiv.style.display = 'block';
-            
-            // Close the dialog after a delay
-            setTimeout(function() {
-              google.script.host.close();
-            }, 2000);
-          }
-        } else {
-          // Handle special cases
-          if (result.showSwapForm) {
-            google.script.run.showSwapForm();
-            google.script.host.close();
-          } else {
-            // Show error message
-            const messageDiv = document.getElementById('message');
-            messageDiv.innerHTML = result.message;
-            messageDiv.className = 'error';
-            messageDiv.style.display = 'block';
-          }
-        }
-      }
-      
-      // Failure handler
-      function onFailure(error) {
-        const messageDiv = document.getElementById('message');
-        messageDiv.innerHTML = "Error: " + error.message;
-        messageDiv.className = 'error';
-        messageDiv.style.display = 'block';
-      }
-    </script>
-  </body>
-</html>`;
+  // Implementation in FormHandlers.gs
+  return '';
 }
 
 /**
  * Returns the HTML content for the settlement form
- * This is a simplified version - the actual implementation is in FormHandlers.gs
  * @return {string} HTML content
  */
 function getSettlementFormHtml() {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        padding: 20px;
-      }
-      h2 {
-        margin-bottom: 20px;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>Transaction Settlement Form</h2>
-    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
-    <p>Please run the setupSystem function to create all required HTML templates.</p>
-  </body>
-</html>`;
+  // Implementation in FormHandlers.gs
+  return '';
 }
 
 /**
  * Returns the HTML content for the swap form
- * This is a simplified version - the actual implementation is in FormHandlers.gs
  * @return {string} HTML content
  */
 function getSwapFormHtml() {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        padding: 20px;
-      }
-      h2 {
-        margin-bottom: 20px;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>Swap Transaction Form</h2>
-    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
-    <p>Please run the setupSystem function to create all required HTML templates.</p>
-  </body>
-</html>`;
+  // Implementation in FormHandlers.gs
+  return '';
 }
 
 /**
  * Returns the HTML content for the adjustment form
- * This is a simplified version - the actual implementation is in FormHandlers.gs
  * @return {string} HTML content
  */
 function getAdjustmentFormHtml() {
-  return `<!DOCTYPE html>
-<html>
-  <head>
-    <base target="_top">
-    <style>
-      body {
-        font-family: Arial, sans-serif;
-        text-align: center;
-        padding: 20px;
-      }
-      h2 {
-        margin-bottom: 20px;
-      }
-    </style>
-  </head>
-  <body>
-    <h2>Inventory Adjustment Form</h2>
-    <p>This HTML file is a placeholder. The actual form will be created by FormHandlers.gs</p>
-    <p>Please run the setupSystem function to create all required HTML templates.</p>
-  </body>
-</html>`;
+  // Implementation in FormHandlers.gs
+  return '';
 }
 
 /**
- * Optimized processing for settlement form submissions
- * This version uses batch processing to prevent timeout issues
+ * Process the settlement form submission
+ * @param {Object} formData - The form data
+ * @return {Object} Result with status and message
  */
 function processSettlementForm(formData) {
-  try {
-    // Initialize processing tracking
-    initializeProcessingSteps();
-    
-    // Get pending transaction data
-    const props = PropertiesService.getScriptProperties();
-    const pendingTransactionJson = props.getProperty('pendingTransaction');
-    
-    if (!pendingTransactionJson) {
+  // Delegate to the FOREX.Forms implementation
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processSettlementForm) {
+    return FOREX.Forms.processSettlementForm(formData);
+  } else {
+    // Fallback to ensure backwards compatibility
+    try {
+      // Initialize processing tracking
+      initializeProcessingSteps();
+      
+      // Get pending transaction data
+      const props = PropertiesService.getScriptProperties();
+      const pendingTransactionJson = props.getProperty('pendingTransaction');
+      
+      if (!pendingTransactionJson) {
+        return {
+          success: false,
+          message: 'No pending transaction found',
+          processingSteps: getProcessingSteps()
+        };
+      }
+      
+      // Parse transaction data
+      const pendingTransaction = JSON.parse(pendingTransactionJson);
+      
+      addProcessingStep("Settlement data validated");
+      addProcessingStep(`${formData.settlements.length} settlement legs processed`);
+      
+      // Ensure settlement amounts are properly parsed as numbers
+      const optimizedLegs = formData.settlements.map(settlement => {
+        return {
+          settlementType: settlement.settlementType || '',
+          currency: settlement.currency || pendingTransaction.currency,
+          amount: parseFloat(settlement.amount) || 0,
+          bankAccount: settlement.bankAccount || '',
+          notes: settlement.notes || ''
+        };
+      });
+      
+      // Create transaction with settlement legs
+      const transactionData = {
+        date: pendingTransaction.date,
+        customer: pendingTransaction.customer,
+        transactionType: pendingTransaction.transactionType,
+        currency: pendingTransaction.currency,
+        amount: parseFloat(pendingTransaction.amount),
+        rate: parseFloat(pendingTransaction.rate),
+        nature: pendingTransaction.nature,
+        source: pendingTransaction.source,
+        staff: pendingTransaction.staff,
+        notes: pendingTransaction.notes,
+        legs: optimizedLegs
+      };
+      
+      // Create the transaction
+      const result = createTransaction(transactionData);
+      
+      // Clear pending transaction data
+      props.deleteProperty('pendingTransaction');
+      
+      // Ensure processing steps are included
+      if (!result.processingSteps) {
+        result.processingSteps = getProcessingSteps();
+      }
+      
+      return result;
+    } catch (error) {
+      Logger.log(`Error processing settlement form: ${error}`);
       return {
         success: false,
-        message: 'No pending transaction found',
+        message: `Error processing form: ${error.toString()}`,
         processingSteps: getProcessingSteps()
       };
     }
-    
-    // Parse transaction data
-    const pendingTransaction = JSON.parse(pendingTransactionJson);
-    
-    addProcessingStep("Settlement data validated");
-    addProcessingStep(`${formData.settlements.length} settlement legs processed`);
-    
-    // Apply performance optimization - batch process legs
-    // Instead of processing each leg separately, create an optimized structure
-    const optimizedLegs = [];
-    
-    // Process legs in batches if there are many
-    const batchSize = 5; // Process legs in batches of 5
-    const totalLegs = formData.settlements.length;
-    let processedLegs = 0;
-    
-    // Process legs in smaller batches to prevent timeout
-    while (processedLegs < totalLegs) {
-      const endIndex = Math.min(processedLegs + batchSize, totalLegs);
-      const currentBatch = formData.settlements.slice(processedLegs, endIndex);
-      
-      // Process each leg in the current batch
-      for (const leg of currentBatch) {
-        // Ensure numeric values
-        if (typeof leg.amount === 'string') {
-          leg.amount = parseFloat(leg.amount);
-        }
-        
-        // Add to optimized legs array
-        optimizedLegs.push(leg);
-      }
-      
-      processedLegs = endIndex;
-    }
-    
-    // Create transaction with optimized settlement legs
-    const transactionData = {
-      date: pendingTransaction.date,
-      customer: pendingTransaction.customer,
-      transactionType: pendingTransaction.transactionType,
-      currency: pendingTransaction.currency,
-      amount: parseFloat(pendingTransaction.amount),
-      rate: parseFloat(pendingTransaction.rate),
-      nature: pendingTransaction.nature,
-      source: pendingTransaction.source,
-      staff: pendingTransaction.staff,
-      notes: pendingTransaction.notes,
-      legs: optimizedLegs
-    };
-    
-    // Create the transaction
-    const result = createTransaction(transactionData);
-    
-    // Clear pending transaction data
-    props.deleteProperty('pendingTransaction');
-    
-    // Ensure processing steps are included
-    if (!result.processingSteps) {
-      result.processingSteps = getProcessingSteps();
-    }
-    
-    return result;
-  } catch (error) {
-    Logger.log(`Error processing settlement form: ${error}`);
-    return {
-      success: false,
-      message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
-    };
   }
+}
+
+// Global processing steps tracking
+// These will be deprecated in favor of the FOREX.Forms implementations
+let _processingSteps = [];
+
+/**
+ * Initialize the processing steps tracking
+ * @deprecated Use FOREX.Forms.initializeProcessingSteps instead
+ */
+function initializeProcessingSteps() {
+  _processingSteps = [];
+}
+
+/**
+ * Add a processing step to track progress
+ * @param {string} step - Description of the processing step
+ * @deprecated Use FOREX.Forms.addProcessingStep instead
+ */
+function addProcessingStep(step) {
+  _processingSteps.push(step);
+  Logger.log(`Processing step: ${step}`);
+}
+
+/**
+ * Get current processing steps
+ * @return {Array} Array of processing steps
+ * @deprecated Use FOREX.Forms.getProcessingSteps instead
+ */
+function getProcessingSteps() {
+  return _processingSteps;
 }
