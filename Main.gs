@@ -3,6 +3,9 @@
  * 
  * This is the entry point for the Forex Transaction System.
  * It contains the menu setup and core functionality.
+ * 
+ * This version has been updated to work exclusively with the new FOREX namespace
+ * modules instead of relying on the legacy files.
  */
 
 // Constants for sheet names
@@ -17,10 +20,8 @@ const SHEET_DASHBOARD = 'Dashboard';
  * Creates custom menu and initializes FOREX system
  */
 function onOpen() {
-  // Initialize the FOREX namespace system
-  if (typeof FOREX !== 'undefined') {
-    FOREX.Core.init();
-  }
+  // First, ensure all FOREX namespaces are initialized
+  initializeForexSystem();
   
   const ui = SpreadsheetApp.getUi();
   ui.createMenu('Forex System')
@@ -38,13 +39,205 @@ function onOpen() {
 }
 
 /**
+ * Initialize the FOREX system
+ * Ensures all modules are loaded and functions are properly mapped
+ */
+function initializeForexSystem() {
+  try {
+    // Log the initialization process
+    Logger.log("Initializing FOREX system...");
+    
+    // Ensure the global namespace exists
+    if (typeof FOREX === 'undefined') {
+      FOREX = {};
+      Logger.log("Created FOREX global namespace");
+    }
+    
+    // Initialize Core module
+    if (typeof FOREX.Core === 'undefined') {
+      FOREX.Core = {};
+      Logger.log("Created FOREX.Core module");
+    }
+    
+    // Initialize Forms module
+    if (typeof FOREX.Forms === 'undefined') {
+      FOREX.Forms = {};
+      Logger.log("Created FOREX.Forms module");
+    }
+    
+    // Initialize Inventory module
+    if (typeof FOREX.Inventory === 'undefined') {
+      FOREX.Inventory = {};
+      Logger.log("Created FOREX.Inventory module");
+    }
+    
+    // Initialize Transactions module
+    if (typeof FOREX.Transactions === 'undefined') {
+      FOREX.Transactions = {};
+      Logger.log("Created FOREX.Transactions module");
+    }
+    
+    // Initialize Reports module
+    if (typeof FOREX.Reports === 'undefined') {
+      FOREX.Reports = {};
+      Logger.log("Created FOREX.Reports module");
+    }
+    
+    // Initialize Utils module
+    if (typeof FOREX.Utils === 'undefined') {
+      FOREX.Utils = {};
+      Logger.log("Created FOREX.Utils module");
+    }
+    
+    // Call the Core.init function if it exists
+    if (typeof FOREX.Core.init === 'function') {
+      FOREX.Core.init();
+      Logger.log("Called FOREX.Core.init()");
+    } else {
+      // Manually map global functions if Core.init doesn't exist
+      mapGlobalFunctions();
+      Logger.log("Manually mapped global functions");
+    }
+    
+    Logger.log("FOREX system initialization complete");
+    return true;
+  } catch (error) {
+    Logger.log(`Error initializing FOREX system: ${error.toString()}`);
+    return false;
+  }
+}
+
+/**
+ * Map global functions to their namespaced equivalents
+ * This function is used when FOREX.Core.init is not available
+ */
+function mapGlobalFunctions() {
+  // Map Form functions
+  if (typeof FOREX.Forms !== 'undefined') {
+    if (typeof FOREX.Forms.showTransactionForm === 'function') {
+      this.showTransactionForm = FOREX.Forms.showTransactionForm;
+    }
+    if (typeof FOREX.Forms.showSettlementForm === 'function') {
+      this.showSettlementForm = FOREX.Forms.showSettlementForm;
+    }
+    if (typeof FOREX.Forms.showSwapForm === 'function') {
+      this.showSwapForm = FOREX.Forms.showSwapForm;
+    }
+    if (typeof FOREX.Forms.showInventoryAdjustmentForm === 'function') {
+      this.showInventoryAdjustmentForm = FOREX.Forms.showInventoryAdjustmentForm;
+    }
+    if (typeof FOREX.Forms.processTransactionForm === 'function') {
+      this.processTransactionForm = FOREX.Forms.processTransactionForm;
+    }
+    if (typeof FOREX.Forms.processSettlementForm === 'function') {
+      this.processSettlementForm = FOREX.Forms.processSettlementForm;
+    }
+    if (typeof FOREX.Forms.processSwapForm === 'function') {
+      this.processSwapForm = FOREX.Forms.processSwapForm;
+    }
+    if (typeof FOREX.Forms.processAdjustmentForm === 'function') {
+      this.processAdjustmentForm = FOREX.Forms.processAdjustmentForm;
+    }
+  }
+  
+  // Map Transaction functions
+  if (typeof FOREX.Transactions !== 'undefined') {
+    if (typeof FOREX.Transactions.createTransaction === 'function') {
+      this.createTransaction = FOREX.Transactions.createTransaction;
+    }
+    if (typeof FOREX.Transactions.processSwapTransaction === 'function') {
+      this.processSwapTransaction = FOREX.Transactions.processSwapTransaction;
+    }
+  }
+  
+  // Map Inventory functions
+  if (typeof FOREX.Inventory !== 'undefined') {
+    if (typeof FOREX.Inventory.updateDailyInventory === 'function') {
+      this.updateDailyInventory = FOREX.Inventory.updateDailyInventory;
+    }
+    if (typeof FOREX.Inventory.updateInventoryForDateAndCurrency === 'function') {
+      this.updateInventoryForDateAndCurrency = FOREX.Inventory.updateInventoryForDateAndCurrency;
+    }
+    if (typeof FOREX.Inventory.recordInventoryAdjustment === 'function') {
+      this.recordInventoryAdjustment = FOREX.Inventory.recordInventoryAdjustment;
+    }
+  }
+  
+  // Map Utility functions
+  if (typeof FOREX.Utils !== 'undefined') {
+    if (typeof FOREX.Utils.getConfigSettings === 'function') {
+      this.getConfigSettings = FOREX.Utils.getConfigSettings;
+    } else {
+      // Keep original implementation if not in Utils
+      this.getConfigSettings = function() {
+        const ss = SpreadsheetApp.getActiveSpreadsheet();
+        const configSheet = ss.getSheetByName(SHEET_CONFIG);
+        
+        const configData = configSheet.getDataRange().getValues();
+        const config = {};
+        
+        // Skip header row
+        for (let i = 1; i < configData.length; i++) {
+          const setting = configData[i][0];
+          const value = configData[i][1];
+          config[camelCase(setting)] = value;
+        }
+        
+        return config;
+      };
+    }
+    
+    if (typeof FOREX.Utils.camelCase === 'function') {
+      this.camelCase = FOREX.Utils.camelCase;
+    } else {
+      // Keep original implementation if not in Utils
+      this.camelCase = function(str) {
+        return str
+          .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
+          .replace(/\s/g, '')
+          .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
+      };
+    }
+    
+    if (typeof FOREX.Utils.createHtmlFile === 'function') {
+      this.createHtmlFile = FOREX.Utils.createHtmlFile;
+    }
+    
+    if (typeof FOREX.Utils.createHtmlTemplates === 'function') {
+      this.createHtmlTemplates = FOREX.Utils.createHtmlTemplates;
+    }
+    
+    // Progress tracking
+    if (typeof FOREX.Utils.initializeProcessingSteps === 'function') {
+      this.initializeProcessingSteps = FOREX.Utils.initializeProcessingSteps;
+    }
+    if (typeof FOREX.Utils.addProcessingStep === 'function') {
+      this.addProcessingStep = FOREX.Utils.addProcessingStep;
+    }
+    if (typeof FOREX.Utils.getProcessingSteps === 'function') {
+      this.getProcessingSteps = FOREX.Utils.getProcessingSteps;
+    }
+  }
+}
+
+/**
  * Shows a custom form for entering new transactions
- * 
- * Note: In Google Apps Script, functions with the same name across files are all available
- * in the global namespace. The implementation in FormHandlers.gs will override this one
- * if both are present, but we're leaving this implementation empty to prevent confusion.
+ * Directly uses the FOREX.Forms implementation
  */
 function showTransactionForm() {
+  // Check if FOREX.Forms.showTransactionForm is available
+  if (typeof FOREX !== 'undefined' && 
+      typeof FOREX.Forms !== 'undefined' && 
+      typeof FOREX.Forms.showTransactionForm === 'function') {
+    
+    // Use the FOREX.Forms implementation
+    FOREX.Forms.showTransactionForm();
+    return;
+  }
+  
+  // Fallback implementation
+  Logger.log("Could not find FOREX.Forms.showTransactionForm, using fallback implementation");
+  
   // We need a temporary HTML template file to ensure the form will properly display
   let htmlTemplate;
   
@@ -57,7 +250,7 @@ function showTransactionForm() {
       '<script>' +
       '  // Create the TransactionForm HTML file if needed' +
       '  google.script.run.withSuccessHandler(function() {' +
-      '    // Redirect to the actual function in FormHandlers.gs' +
+      '    // Try again after templates are created' +
       '    google.script.run.showTransactionForm();' +
       '    google.script.host.close();' +
       '  }).createHtmlTemplates();' +
@@ -77,7 +270,7 @@ function showTransactionForm() {
     return;
   }
   
-  // If the template exists, we can proceed with the actual implementation in FormHandlers.gs
+  // If the template exists, we can proceed with the form setup
   const config = getConfigSettings();
   
   // Get staff list from config
@@ -92,6 +285,23 @@ function showTransactionForm() {
   // Get today's date in yyyy-MM-dd format
   const today = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyy-MM-dd');
   htmlTemplate.today = today;
+  
+  // Make sure the includeProgressIndicator function is defined
+  if (typeof includeProgressIndicator !== 'function') {
+    if (typeof FOREX.Utils !== 'undefined' && 
+        typeof FOREX.Utils.getProgressIndicatorHtml === 'function') {
+      
+      // Use the FOREX.Utils implementation for includeProgressIndicator
+      htmlTemplate.includeProgressIndicator = function() {
+        return FOREX.Utils.getProgressIndicatorHtml();
+      };
+    } else {
+      // Create a basic implementation
+      htmlTemplate.includeProgressIndicator = function() {
+        return getProgressIndicatorHtml();
+      };
+    }
+  }
   
   // Generate HTML from template
   const html = htmlTemplate.evaluate()
@@ -146,9 +356,7 @@ function setupSystem() {
   createHtmlTemplates();
   
   // Initialize FOREX system
-  if (typeof FOREX !== 'undefined') {
-    FOREX.Core.init();
-  }
+  initializeForexSystem();
   
   ui.alert('Setup Complete', 'The Forex Transaction System has been set up successfully.', ui.ButtonSet.OK);
 }
@@ -183,9 +391,9 @@ function setupTransactionSheet() {
   
   // Set headers
   const headers = [
-    'Transaction ID', 'Date', 'Customer', 'Transaction Type', 'Currency', 
-    'Amount', 'Rate', 'Value (NGN)', 'Nature of Transaction', 'Source', 
-    'Staff', 'Status', 'Notes'
+    'Transaction ID', 'Date', 'Transaction Type', 'Currency', 'Amount', 
+    'Rate', 'Value (NGN)', 'Nature of Transaction', 'Customer', 'Source', 
+    'Staff', 'Status', 'Notes', 'Timestamp'
   ];
   
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -193,14 +401,14 @@ function setupTransactionSheet() {
   sheet.setFrozenRows(1);
   
   // Set up data validation for Transaction Type
-  const transactionTypeRange = sheet.getRange(2, 4, 1000, 1);
+  const transactionTypeRange = sheet.getRange(2, 3, 1000, 1);
   const transactionTypeRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Buy', 'Sell', 'Swap'], true)
     .build();
   transactionTypeRange.setDataValidation(transactionTypeRule);
   
   // Set up data validation for Currency
-  const currencyRange = sheet.getRange(2, 5, 1000, 1);
+  const currencyRange = sheet.getRange(2, 4, 1000, 1);
   const currencyRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['USD', 'GBP', 'EUR', 'NAIRA'], true)
     .build();
@@ -215,9 +423,10 @@ function setupTransactionSheet() {
   
   // Format columns
   sheet.getRange('B:B').setNumberFormat('yyyy-mm-dd');
+  sheet.getRange('E:E').setNumberFormat('#,##0.00');
   sheet.getRange('F:F').setNumberFormat('#,##0.00');
   sheet.getRange('G:G').setNumberFormat('#,##0.00');
-  sheet.getRange('H:H').setNumberFormat('#,##0.00');
+  sheet.getRange('N:N').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   
   // Auto-resize columns
   sheet.autoResizeColumns(1, headers.length);
@@ -234,8 +443,8 @@ function setupTransactionLegsSheet() {
   
   // Set headers
   const headers = [
-    'Transaction ID', 'Leg ID', 'Settlement Type', 'Currency', 'Amount', 
-    'Bank/Account', 'Status', 'Notes', 'Validation'
+    'Transaction ID', 'Settlement Type', 'Currency', 'Amount', 
+    'Bank/Account', 'Notes', 'Timestamp'
   ];
   
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -243,21 +452,22 @@ function setupTransactionLegsSheet() {
   sheet.setFrozenRows(1);
   
   // Set up data validation for Settlement Type
-  const settlementTypeRange = sheet.getRange(2, 3, 1000, 1);
+  const settlementTypeRange = sheet.getRange(2, 2, 1000, 1);
   const settlementTypeRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['Cash', 'Bank Transfer', 'Swap In', 'Swap Out'], true)
     .build();
   settlementTypeRange.setDataValidation(settlementTypeRule);
   
   // Set up data validation for Currency
-  const currencyRange = sheet.getRange(2, 4, 1000, 1);
+  const currencyRange = sheet.getRange(2, 3, 1000, 1);
   const currencyRule = SpreadsheetApp.newDataValidation()
     .requireValueInList(['USD', 'GBP', 'EUR', 'NAIRA'], true)
     .build();
   currencyRange.setDataValidation(currencyRule);
   
   // Format columns
-  sheet.getRange('E:E').setNumberFormat('#,##0.00');
+  sheet.getRange('D:D').setNumberFormat('#,##0.00');
+  sheet.getRange('G:G').setNumberFormat('yyyy-mm-dd hh:mm:ss');
   
   // Auto-resize columns
   sheet.autoResizeColumns(1, headers.length);
@@ -274,8 +484,7 @@ function setupDailyInventorySheet() {
   
   // Set headers
   const headers = [
-    'Date', 'Currency', 'Opening Balance', 'Purchases', 'Sales', 
-    'Adjustments', 'Closing Balance'
+    'Date', 'Currency', 'Balance'
   ];
   
   sheet.getRange(1, 1, 1, headers.length).setValues([headers]);
@@ -291,19 +500,11 @@ function setupDailyInventorySheet() {
     sheet.getRange(i + 2, 2).setValue(currencies[i]);
     // Initial balance - this would be set manually
     sheet.getRange(i + 2, 3).setValue(0);
-    // Purchases formula - placeholder, will be updated by script
-    sheet.getRange(i + 2, 4).setValue(0);
-    // Sales formula - placeholder, will be updated by script
-    sheet.getRange(i + 2, 5).setValue(0);
-    // Adjustments - default to 0
-    sheet.getRange(i + 2, 6).setValue(0);
-    // Closing balance formula
-    sheet.getRange(i + 2, 7).setFormula('=C' + (i + 2) + '+D' + (i + 2) + '-E' + (i + 2) + '+F' + (i + 2));
   }
   
   // Format columns
   sheet.getRange('A:A').setNumberFormat('yyyy-mm-dd');
-  sheet.getRange('C:G').setNumberFormat('#,##0.00');
+  sheet.getRange('C:C').setNumberFormat('#,##0.00');
   
   // Auto-resize columns
   sheet.autoResizeColumns(1, headers.length);
@@ -390,13 +591,16 @@ function setupDashboardSheet() {
  */
 function updateDailyInventory() {
   try {
-    if (typeof FOREX !== 'undefined' && FOREX.Inventory && FOREX.Inventory.updateDailyInventory) {
-      // Use the namespace version if available
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Inventory !== 'undefined' && 
+        typeof FOREX.Inventory.updateDailyInventory === 'function') {
+      
+      // Use the namespace version
       return FOREX.Inventory.updateDailyInventory();
     } else {
-      // Fallback to old implementation
+      // Fallback message
       const ui = SpreadsheetApp.getUi();
-      ui.alert('Not Implemented', 'The inventory update will be implemented in InventoryManager.gs', ui.ButtonSet.OK);
+      ui.alert('Function Not Available', 'The inventory update feature is not available. Please make sure the FOREX.Inventory module is properly loaded.', ui.ButtonSet.OK);
     }
   } catch (error) {
     Logger.log(`Error updating inventory: ${error}`);
@@ -409,30 +613,69 @@ function updateDailyInventory() {
  * Generates a daily summary report
  */
 function generateDailyReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The daily report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Reports !== 'undefined' && 
+        typeof FOREX.Reports.generateDailyReport === 'function') {
+      
+      // Use the namespace version
+      return FOREX.Reports.generateDailyReport();
+    } else {
+      // Fallback message
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Function Not Available', 'The daily report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating daily report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating daily report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
  * Generates a staff performance report
  */
 function generateStaffReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The staff report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Reports !== 'undefined' && 
+        typeof FOREX.Reports.generateStaffReport === 'function') {
+      
+      // Use the namespace version
+      return FOREX.Reports.generateStaffReport();
+    } else {
+      // Fallback message
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Function Not Available', 'The staff report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating staff report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating staff report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
  * Generates a customer analytics report
  */
 function generateCustomerReport() {
-  // This will be implemented in ReportGenerator.gs
-  // For now, just show a message
-  const ui = SpreadsheetApp.getUi();
-  ui.alert('Not Implemented', 'The customer report will be implemented in ReportGenerator.gs', ui.ButtonSet.OK);
+  try {
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Reports !== 'undefined' && 
+        typeof FOREX.Reports.generateCustomerReport === 'function') {
+      
+      // Use the namespace version
+      return FOREX.Reports.generateCustomerReport();
+    } else {
+      // Fallback message
+      const ui = SpreadsheetApp.getUi();
+      ui.alert('Function Not Available', 'The customer report feature is not available. Please make sure the FOREX.Reports module is properly loaded.', ui.ButtonSet.OK);
+    }
+  } catch (error) {
+    Logger.log(`Error generating customer report: ${error}`);
+    const ui = SpreadsheetApp.getUi();
+    ui.alert('Error', `Error generating customer report: ${error.toString()}`, ui.ButtonSet.OK);
+  }
 }
 
 /**
@@ -442,20 +685,27 @@ function createHtmlTemplates() {
   const ui = SpreadsheetApp.getUi();
   
   try {
-    // Create Transaction Form HTML
-    createHtmlFile('TransactionForm', getTransactionFormHtml());
+    // Check if FOREX.Utils.createHtmlTemplates is available
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Utils !== 'undefined' && 
+        typeof FOREX.Utils.createHtmlTemplates === 'function') {
+      
+      // Use the FOREX.Utils implementation
+      return FOREX.Utils.createHtmlTemplates();
+    }
     
-    // Create Settlement Form HTML
-    createHtmlFile('SettlementForm', getSettlementFormHtml());
+    // Otherwise use the fallback implementation
+    Logger.log("Using fallback implementation for createHtmlTemplates");
     
-    // Create Swap Form HTML
-    createHtmlFile('SwapForm', getSwapFormHtml());
+    // Add the Progress Indicator HTML to all templates
+    const progressIndicatorHtml = getProgressIndicatorHtml();
     
-    // Create Adjustment Form HTML
-    createHtmlFile('AdjustmentForm', getAdjustmentFormHtml());
-    
-    // Create Progress Indicator HTML
-    createHtmlFile('ProgressIndicator', getProgressIndicatorHtml());
+    // Create basic templates with the progress indicator
+    createHtmlFile('TransactionForm', getBasicFormHtml('Transaction', progressIndicatorHtml));
+    createHtmlFile('SettlementForm', getBasicFormHtml('Settlement', progressIndicatorHtml));
+    createHtmlFile('SwapForm', getBasicFormHtml('Swap', progressIndicatorHtml));
+    createHtmlFile('AdjustmentForm', getBasicFormHtml('Adjustment', progressIndicatorHtml));
+    createHtmlFile('ProgressIndicator', progressIndicatorHtml);
     
     return true;
   } catch (error) {
@@ -466,6 +716,93 @@ function createHtmlTemplates() {
 }
 
 /**
+ * Creates a basic form HTML template
+ * @param {string} formType - The type of form
+ * @param {string} progressIndicatorHtml - The progress indicator HTML
+ * @return {string} The basic form HTML
+ */
+function getBasicFormHtml(formType, progressIndicatorHtml) {
+  return `<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <style>
+      body {
+        font-family: Arial, sans-serif;
+        margin: 0;
+        padding: 10px;
+      }
+      .form-group {
+        margin-bottom: 15px;
+      }
+      label {
+        display: block;
+        margin-bottom: 5px;
+        font-weight: bold;
+      }
+      input[type="text"], 
+      input[type="number"], 
+      input[type="date"], 
+      select, 
+      textarea {
+        width: 100%;
+        padding: 8px;
+        border: 1px solid #ddd;
+        border-radius: 4px;
+        box-sizing: border-box;
+      }
+      .button-group {
+        margin-top: 20px;
+        text-align: right;
+      }
+      button {
+        padding: 8px 16px;
+        background-color: #4285f4;
+        color: white;
+        border: none;
+        border-radius: 4px;
+        cursor: pointer;
+      }
+      button.cancel {
+        background-color: #f1f1f1;
+        color: #333;
+        margin-right: 10px;
+      }
+      .error {
+        color: red;
+        margin-bottom: 15px;
+      }
+      .success {
+        color: green;
+        margin-bottom: 15px;
+      }
+    </style>
+    
+    <!-- Progress Indicator -->
+    ${progressIndicatorHtml}
+  </head>
+  <body>
+    <h2>${formType} Form</h2>
+    
+    <div id="message" class="error" style="display:none;">
+      This is a placeholder ${formType} form. The actual form content will be loaded dynamically.
+    </div>
+    
+    <div class="button-group">
+      <button type="button" class="cancel" onclick="google.script.host.close()">Close</button>
+    </div>
+    
+    <script>
+      // Show the message when the page loads
+      document.addEventListener('DOMContentLoaded', function() {
+        document.getElementById('message').style.display = 'block';
+      });
+    </script>
+  </body>
+</html>`;
+}
+
+/**
  * Creates an HTML file in the script project
  * @param {string} filename - The filename to create
  * @param {string} content - The file content
@@ -473,6 +810,18 @@ function createHtmlTemplates() {
  */
 function createHtmlFile(filename, content) {
   try {
+    // Check if FOREX.Utils.createHtmlFile is available
+    if (typeof FOREX !== 'undefined' && 
+        typeof FOREX.Utils !== 'undefined' && 
+        typeof FOREX.Utils.createHtmlFile === 'function') {
+      
+      // Use the FOREX.Utils implementation
+      return FOREX.Utils.createHtmlFile(filename, content);
+    }
+    
+    // Otherwise use the fallback implementation
+    Logger.log("Using fallback implementation for createHtmlFile");
+    
     // Create or update the HTML file
     const htmlOutput = HtmlService.createHtmlOutput(content)
       .setTitle(filename);
@@ -487,44 +836,20 @@ function createHtmlFile(filename, content) {
 }
 
 /**
- * Gets configuration settings from the Config sheet
- * @return {Object} Configuration settings
- */
-function getConfigSettings() {
-  const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const configSheet = ss.getSheetByName(SHEET_CONFIG);
-  
-  const configData = configSheet.getDataRange().getValues();
-  const config = {};
-  
-  // Skip header row
-  for (let i = 1; i < configData.length; i++) {
-    const setting = configData[i][0];
-    const value = configData[i][1];
-    config[camelCase(setting)] = value;
-  }
-  
-  return config;
-}
-
-/**
- * Converts a string to camelCase
- * @param {string} str - The string to convert
- * @return {string} Camel-cased string
- */
-function camelCase(str) {
-  return str
-    .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
-    .replace(/\s/g, '')
-    .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
-}
-
-/**
  * Returns the HTML content for the progress indicator
- * This will be delegated to the FOREX.Utils module in the full implementation
  * @return {string} HTML content
  */
 function getProgressIndicatorHtml() {
+  // Check if FOREX.Utils.getProgressIndicatorHtml is available
+  if (typeof FOREX !== 'undefined' && 
+      typeof FOREX.Utils !== 'undefined' && 
+      typeof FOREX.Utils.getProgressIndicatorHtml === 'function') {
+    
+    // Use the FOREX.Utils implementation
+    return FOREX.Utils.getProgressIndicatorHtml();
+  }
+  
+  // Otherwise use the fallback implementation
   return `<!-- Standardized Progress Indicator Component -->
 <style>
   /* Loading overlay styles */
@@ -871,150 +1196,67 @@ function getProgressIndicatorHtml() {
 }
 
 /**
- * Returns the HTML content for the transaction form
- * @return {string} HTML content
+ * Gets configuration settings from the Config sheet
+ * @return {Object} Configuration settings
  */
-function getTransactionFormHtml() {
-  // Implementation in FormHandlers.gs
-  return '';
-}
-
-/**
- * Returns the HTML content for the settlement form
- * @return {string} HTML content
- */
-function getSettlementFormHtml() {
-  // Implementation in FormHandlers.gs
-  return '';
-}
-
-/**
- * Returns the HTML content for the swap form
- * @return {string} HTML content
- */
-function getSwapFormHtml() {
-  // Implementation in FormHandlers.gs
-  return '';
-}
-
-/**
- * Returns the HTML content for the adjustment form
- * @return {string} HTML content
- */
-function getAdjustmentFormHtml() {
-  // Implementation in FormHandlers.gs
-  return '';
-}
-
-/**
- * Process the settlement form submission
- * @param {Object} formData - The form data
- * @return {Object} Result with status and message
- */
-function processSettlementForm(formData) {
-  // Delegate to the FOREX.Forms implementation
-  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processSettlementForm) {
-    return FOREX.Forms.processSettlementForm(formData);
-  } else {
-    // Fallback to ensure backwards compatibility
-    try {
-      // Initialize processing tracking
-      initializeProcessingSteps();
-      
-      // Get pending transaction data
-      const props = PropertiesService.getScriptProperties();
-      const pendingTransactionJson = props.getProperty('pendingTransaction');
-      
-      if (!pendingTransactionJson) {
-        return {
-          success: false,
-          message: 'No pending transaction found',
-          processingSteps: getProcessingSteps()
-        };
-      }
-      
-      // Parse transaction data
-      const pendingTransaction = JSON.parse(pendingTransactionJson);
-      
-      addProcessingStep("Settlement data validated");
-      addProcessingStep(`${formData.settlements.length} settlement legs processed`);
-      
-      // Ensure settlement amounts are properly parsed as numbers
-      const optimizedLegs = formData.settlements.map(settlement => {
-        return {
-          settlementType: settlement.settlementType || '',
-          currency: settlement.currency || pendingTransaction.currency,
-          amount: parseFloat(settlement.amount) || 0,
-          bankAccount: settlement.bankAccount || '',
-          notes: settlement.notes || ''
-        };
-      });
-      
-      // Create transaction with settlement legs
-      const transactionData = {
-        date: pendingTransaction.date,
-        customer: pendingTransaction.customer,
-        transactionType: pendingTransaction.transactionType,
-        currency: pendingTransaction.currency,
-        amount: parseFloat(pendingTransaction.amount),
-        rate: parseFloat(pendingTransaction.rate),
-        nature: pendingTransaction.nature,
-        source: pendingTransaction.source,
-        staff: pendingTransaction.staff,
-        notes: pendingTransaction.notes,
-        legs: optimizedLegs
-      };
-      
-      // Create the transaction
-      const result = createTransaction(transactionData);
-      
-      // Clear pending transaction data
-      props.deleteProperty('pendingTransaction');
-      
-      // Ensure processing steps are included
-      if (!result.processingSteps) {
-        result.processingSteps = getProcessingSteps();
-      }
-      
-      return result;
-    } catch (error) {
-      Logger.log(`Error processing settlement form: ${error}`);
-      return {
-        success: false,
-        message: `Error processing form: ${error.toString()}`,
-        processingSteps: getProcessingSteps()
-      };
-    }
+function getConfigSettings() {
+  // Check if FOREX.Utils.getConfigSettings is available
+  if (typeof FOREX !== 'undefined' && 
+      typeof FOREX.Utils !== 'undefined' && 
+      typeof FOREX.Utils.getConfigSettings === 'function') {
+    
+    // Use the FOREX.Utils implementation
+    return FOREX.Utils.getConfigSettings();
   }
+  
+  // Otherwise use the fallback implementation
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const configSheet = ss.getSheetByName(SHEET_CONFIG);
+  
+  if (!configSheet) {
+    Logger.log("Config sheet not found");
+    return {};
+  }
+  
+  const configData = configSheet.getDataRange().getValues();
+  const config = {};
+  
+  // Skip header row
+  for (let i = 1; i < configData.length; i++) {
+    const setting = configData[i][0];
+    const value = configData[i][1];
+    config[camelCase(setting)] = value;
+  }
+  
+  return config;
 }
 
-// Global processing steps tracking
-// These will be deprecated in favor of the FOREX.Forms implementations
-let _processingSteps = [];
-
 /**
- * Initialize the processing steps tracking
- * @deprecated Use FOREX.Forms.initializeProcessingSteps instead
+ * Helper function to make templates work
+ * This is required for HTML templates to include the progress indicator
  */
-function initializeProcessingSteps() {
-  _processingSteps = [];
+function includeProgressIndicator() {
+  return HtmlService.createHtmlOutputFromFile('ProgressIndicator').getContent();
 }
 
 /**
- * Add a processing step to track progress
- * @param {string} step - Description of the processing step
- * @deprecated Use FOREX.Forms.addProcessingStep instead
+ * Converts a string to camelCase
+ * @param {string} str - The string to convert
+ * @return {string} Camel-cased string
  */
-function addProcessingStep(step) {
-  _processingSteps.push(step);
-  Logger.log(`Processing step: ${step}`);
-}
-
-/**
- * Get current processing steps
- * @return {Array} Array of processing steps
- * @deprecated Use FOREX.Forms.getProcessingSteps instead
- */
-function getProcessingSteps() {
-  return _processingSteps;
+function camelCase(str) {
+  // Check if FOREX.Utils.camelCase is available
+  if (typeof FOREX !== 'undefined' && 
+      typeof FOREX.Utils !== 'undefined' && 
+      typeof FOREX.Utils.camelCase === 'function') {
+    
+    // Use the FOREX.Utils implementation
+    return FOREX.Utils.camelCase(str);
+  }
+  
+  // Otherwise use the fallback implementation
+  return str
+    .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
+    .replace(/\s/g, '')
+    .replace(/^(.)/, function($1) { return $1.toLowerCase(); });
 }
