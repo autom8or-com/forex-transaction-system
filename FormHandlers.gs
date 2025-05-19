@@ -154,65 +154,18 @@ function showSettlementForm() {
 
 /**
  * Process the multi-settlement form submission
+ * Delegates to FOREX.Forms if available, otherwise redirects to Main.gs implementation
+ * 
  * @param {Object} formData - The form data
  * @return {Object} Result with status and message
  */
 function processSettlementForm(formData) {
-  try {
-    // Initialize processing tracking
-    initializeProcessingSteps();
-    
-    // Get pending transaction data
-    const props = PropertiesService.getScriptProperties();
-    const pendingTransactionJson = props.getProperty('pendingTransaction');
-    
-    if (!pendingTransactionJson) {
-      return {
-        success: false,
-        message: 'No pending transaction found',
-        processingSteps: getProcessingSteps()
-      };
-    }
-    
-    const pendingTransaction = JSON.parse(pendingTransactionJson);
-    
-    addProcessingStep("Settlement data validated");
-    addProcessingStep(`${formData.settlements.length} settlement legs processed`);
-    
-    // Create transaction with settlement legs
-    const transactionData = {
-      date: pendingTransaction.date,
-      customer: pendingTransaction.customer,
-      transactionType: pendingTransaction.transactionType,
-      currency: pendingTransaction.currency,
-      amount: parseFloat(pendingTransaction.amount),
-      rate: parseFloat(pendingTransaction.rate),
-      nature: pendingTransaction.nature,
-      source: pendingTransaction.source,
-      staff: pendingTransaction.staff,
-      notes: pendingTransaction.notes,
-      legs: formData.settlements
-    };
-    
-    // Create the transaction
-    const result = createTransaction(transactionData);
-    
-    // Clear pending transaction data
-    props.deleteProperty('pendingTransaction');
-    
-    // Ensure processing steps are included
-    if (!result.processingSteps) {
-      result.processingSteps = getProcessingSteps();
-    }
-    
-    return result;
-  } catch (error) {
-    Logger.log(`Error processing settlement form: ${error}`);
-    return {
-      success: false,
-      message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
-    };
+  // Delegate to the FOREX.Forms implementation if available
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processSettlementForm) {
+    return FOREX.Forms.processSettlementForm(formData);
+  } else {
+    // Fallback to the Main.gs implementation
+    return window.processSettlementForm(formData);
   }
 }
 
@@ -469,353 +422,11 @@ function createHtmlFile(filename, content) {
 }
 
 /**
- * Gets the HTML content for the progress indicator
+ * Helper function to include progress indicator in forms
  * @return {string} HTML content
  */
-function getProgressIndicatorHtml() {
-  return `<!-- Standardized Progress Indicator Component -->
-<style>
-  /* Loading overlay styles */
-  .loading-overlay {
-    display: none;
-    position: fixed;
-    top: 0;
-    left: 0;
-    width: 100%;
-    height: 100%;
-    background-color: rgba(255, 255, 255, 0.8);
-    z-index: 1000;
-  }
-  
-  .loading-spinner {
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    text-align: center;
-  }
-  
-  .spinner {
-    border: 8px solid #f3f3f3;
-    border-radius: 50%;
-    border-top: 8px solid #3498db;
-    width: 60px;
-    height: 60px;
-    margin: 20px auto;
-    animation: spin 2s linear infinite;
-  }
-  
-  .processing-status {
-    font-size: 16px;
-    font-weight: bold;
-    color: #333;
-    margin-bottom: 10px;
-  }
-  
-  .processing-step {
-    margin-top: 10px;
-    font-size: 14px;
-    color: #666;
-  }
-  
-  .processing-steps {
-    margin-top: 15px;
-    text-align: left;
-    max-width: 280px;
-    margin-left: auto;
-    margin-right: auto;
-  }
-  
-  .step-item {
-    margin-bottom: 6px;
-    font-size: 13px;
-    color: #666;
-    display: flex;
-    align-items: center;
-  }
-  
-  .step-indicator {
-    display: inline-block;
-    width: 18px;
-    height: 18px;
-    line-height: 18px;
-    background: #e0e0e0;
-    border-radius: 50%;
-    text-align: center;
-    margin-right: 8px;
-    font-size: 12px;
-    color: #fff;
-  }
-  
-  .step-complete .step-indicator {
-    background: #4CAF50;
-  }
-  
-  .step-active .step-indicator {
-    background: #2196F3;
-  }
-  
-  .step-pending .step-indicator {
-    background: #e0e0e0;
-  }
-  
-  .step-text {
-    flex: 1;
-  }
-  
-  @keyframes spin {
-    0% { transform: rotate(0deg); }
-    100% { transform: rotate(360deg); }
-  }
-</style>
-
-<!-- Loading overlay HTML template -->
-<div id="loadingOverlay" class="loading-overlay">
-  <div class="loading-spinner">
-    <div class="spinner"></div>
-    <p id="processingStatus" class="processing-status">Processing...</p>
-    <p id="processingStep" class="processing-step"></p>
-    <div id="processingSteps" class="processing-steps">
-      <!-- Processing steps will be added here dynamically -->
-    </div>
-  </div>
-</div>
-
-<script>
-  // Show loading overlay with message
-  function showLoadingOverlay(message) {
-    document.getElementById('loadingOverlay').style.display = 'block';
-    if (message) {
-      document.getElementById('processingStatus').textContent = message;
-    }
-    // Disable all buttons while processing
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(button => {
-      button.disabled = true;
-    });
-  }
-  
-  // Hide loading overlay
-  function hideLoadingOverlay() {
-    document.getElementById('loadingOverlay').style.display = 'none';
-    // Re-enable all buttons
-    const buttons = document.querySelectorAll('button');
-    buttons.forEach(button => {
-      button.disabled = false;
-    });
-  }
-  
-  // Update the processing step message
-  function updateProcessingStep(step) {
-    document.getElementById('processingStep').textContent = step;
-  }
-  
-  // Initialize processing steps display
-  function initializeProcessingSteps(steps) {
-    const stepsContainer = document.getElementById('processingSteps');
-    stepsContainer.innerHTML = '';
-    
-    steps.forEach((step, index) => {
-      const stepItem = document.createElement('div');
-      stepItem.className = 'step-item step-pending';
-      stepItem.id = 'step-' + index;
-      
-      stepItem.innerHTML = \`
-        <span class="step-indicator">\${index + 1}</span>
-        <span class="step-text">\${step}</span>
-      \`;
-      
-      stepsContainer.appendChild(stepItem);
-    });
-  }
-  
-  // Set a specific step as active (in progress)
-  function setStepActive(stepIndex) {
-    // First, make sure all previous steps are complete
-    for (let i = 0; i < stepIndex; i++) {
-      const step = document.getElementById('step-' + i);
-      if (step) {
-        step.className = 'step-item step-complete';
-      }
-    }
-    
-    // Set the current step as active
-    const currentStep = document.getElementById('step-' + stepIndex);
-    if (currentStep) {
-      currentStep.className = 'step-item step-active';
-    }
-  }
-  
-  // Mark a specific step as complete
-  function setStepComplete(stepIndex) {
-    const step = document.getElementById('step-' + stepIndex);
-    if (step) {
-      step.className = 'step-item step-complete';
-    }
-    
-    // Set next step as active if available
-    const nextStep = document.getElementById('step-' + (stepIndex + 1));
-    if (nextStep) {
-      nextStep.className = 'step-item step-active';
-    }
-  }
-  
-  // Mark all steps as complete
-  function setAllStepsComplete() {
-    const stepsContainer = document.getElementById('processingSteps');
-    const steps = stepsContainer.querySelectorAll('.step-item');
-    
-    steps.forEach(step => {
-      step.className = 'step-item step-complete';
-    });
-  }
-  
-  // Update processing steps based on server response
-  function updateProcessingStepsFromResult(steps) {
-    // Reinitialize with the actual steps from the server
-    initializeProcessingSteps(steps);
-    
-    // Show steps one by one with a delay to simulate progress
-    let i = 0;
-    const stepInterval = setInterval(function() {
-      setStepComplete(i);
-      i++;
-      
-      if (i >= steps.length - 1) {
-        clearInterval(stepInterval);
-        setAllStepsComplete();
-      }
-    }, 500);
-  }
-  
-  // Initialize transaction processing with default steps based on transaction type
-  function initTransactionProcessing(transactionType) {
-    let steps = [];
-    
-    switch(transactionType) {
-      case 'transaction':
-        steps = [
-          "Validating transaction data",
-          "Creating transaction record",
-          "Processing settlement",
-          "Updating inventory"
-        ];
-        break;
-      case 'settlement':
-        steps = [
-          "Validating settlement data",
-          "Processing settlement legs",
-          "Creating transaction record",
-          "Updating inventory"
-        ];
-        break;
-      case 'swap':
-        steps = [
-          "Validating swap data",
-          "Creating sell transaction",
-          "Creating buy transaction",
-          "Updating inventory"
-        ];
-        break;
-      case 'adjustment':
-        steps = [
-          "Validating adjustment data",
-          "Updating inventory",
-          "Saving adjustment record"
-        ];
-        break;
-      default:
-        steps = [
-          "Processing data",
-          "Saving records",
-          "Completing operation"
-        ];
-    }
-    
-    // Initialize the steps display
-    initializeProcessingSteps(steps);
-    setStepActive(0); // Set first step as active
-  }
-  
-  // Handle form success with progress updates
-  function handleFormSuccess(result) {
-    // Update processing steps if provided
-    if (result.processingSteps) {
-      updateProcessingStepsFromResult(result.processingSteps);
-    }
-    
-    if (result.success) {
-      // Set all steps as complete
-      setAllStepsComplete();
-      
-      // Show success message
-      const messageDiv = document.getElementById('message');
-      if (messageDiv) {
-        messageDiv.innerHTML = result.message;
-        messageDiv.className = 'success';
-        messageDiv.style.display = 'block';
-      }
-      
-      // Hide loading overlay after a short delay
-      setTimeout(function() {
-        hideLoadingOverlay();
-      }, 1000);
-      
-      // Close the dialog after a delay if autoClose is true
-      if (result.closeForm !== false) {
-        setTimeout(function() {
-          google.script.host.close();
-        }, 2000);
-      }
-    } else {
-      // Handle special cases
-      if (result.showSettlementForm) {
-        // Update processing status before redirection
-        updateProcessingStep("Opening settlement form...");
-        
-        // Short delay before redirect to show the final status
-        setTimeout(function() {
-          google.script.run.showSettlementForm();
-          google.script.host.close();
-        }, 1000);
-      } else if (result.showSwapForm) {
-        // Update processing status before redirection
-        updateProcessingStep("Opening swap form...");
-        
-        // Short delay before redirect
-        setTimeout(function() {
-          google.script.run.showSwapForm();
-          google.script.host.close();
-        }, 1000);
-      } else {
-        // Hide loading overlay
-        hideLoadingOverlay();
-        
-        // Show error message
-        const messageDiv = document.getElementById('message');
-        if (messageDiv) {
-          messageDiv.innerHTML = result.message;
-          messageDiv.className = 'error';
-          messageDiv.style.display = 'block';
-        }
-      }
-    }
-  }
-  
-  // Handle form failure with error display
-  function handleFormFailure(error) {
-    // Hide loading overlay
-    hideLoadingOverlay();
-    
-    // Show error message
-    const messageDiv = document.getElementById('message');
-    if (messageDiv) {
-      messageDiv.innerHTML = "Error: " + (error.message || error);
-      messageDiv.className = 'error';
-      messageDiv.style.display = 'block';
-    }
-  }
-</script>`;
+function includeProgressIndicator() {
+  return include('ProgressIndicator');
 }
 
 /**
@@ -1196,9 +807,12 @@ function getSettlementFormHtml() {
       const totalAmount = parseFloat(<?= transactionData.amount ?>);
       const currency = '<?= transactionData.currency ?>';
       
-      // Initialize with one settlement
+      // Initialize with one settlement but delay to ensure form renders first
       document.addEventListener('DOMContentLoaded', function() {
-        addSettlement();
+        // Delay adding the first settlement to ensure form renders completely
+        setTimeout(function() {
+          addSettlement();
+        }, 200);
       });
       
       // Add a new settlement method
@@ -1228,7 +842,7 @@ function getSettlementFormHtml() {
         
         // Create form fields
         settlementItem.innerHTML = \`
-          <button type="button" class="remove-settlement" onclick="removeSettlement(\${index})">\u00d7</button>
+          <button type="button" class="remove-settlement" onclick="removeSettlement(\${index})">\\u00d7</button>
           
           <div class="settlement-grid">
             <div class="form-group">
@@ -1301,7 +915,7 @@ function getSettlementFormHtml() {
             
             if (input.hasAttribute('onchange')) {
               const onchangeAttr = input.getAttribute('onchange');
-              const newOnchange = onchangeAttr.replace(/updateSettlement\\(\\d+,/, \`updateSettlement(\${i},\`);
+              const newOnchange = onchangeAttr.replace(/updateSettlement\\\\(\\\\d+,/, \`updateSettlement(\${i},\`);
               input.setAttribute('onchange', newOnchange);
             }
           });
@@ -1341,11 +955,29 @@ function getSettlementFormHtml() {
         }
       }
       
-      // Form submission handler
+      // Form submission handler with timeout protection
       document.getElementById('settlementForm').addEventListener('submit', function(e) {
         e.preventDefault();
         
         // Validate settlements
+        if (settlements.length === 0) {
+          const messageDiv = document.getElementById('message');
+          messageDiv.innerHTML = "At least one settlement method is required.";
+          messageDiv.style.display = 'block';
+          return;
+        }
+        
+        // Validate settlement types
+        for (let i = 0; i < settlements.length; i++) {
+          if (!settlements[i].settlementType) {
+            const messageDiv = document.getElementById('message');
+            messageDiv.innerHTML = "Please select a settlement type for all settlement methods.";
+            messageDiv.style.display = 'block';
+            return;
+          }
+        }
+        
+        // Validate settlement amounts
         let usedAmount = 0;
         settlements.forEach(settlement => {
           if (settlement.currency === currency) {
@@ -1376,11 +1008,25 @@ function getSettlementFormHtml() {
           settlements: settlements
         };
         
-        // Send data to server
-        google.script.run
-          .withSuccessHandler(handleFormSuccess)
-          .withFailureHandler(handleFormFailure)
-          .processSettlementForm(formData);
+        // Add timeout protection
+        const timeoutPromise = new Promise((resolve, reject) => {
+          setTimeout(() => {
+            reject(new Error('Request timed out after 5 minutes. The server might still be processing your request.'));
+          }, 300000); // 5 minute timeout
+        });
+        
+        // Track the request Promise
+        const requestPromise = new Promise((resolve, reject) => {
+          google.script.run
+            .withSuccessHandler(resolve)
+            .withFailureHandler(reject)
+            .processSettlementForm(formData);
+        });
+        
+        // Race between request and timeout
+        Promise.race([requestPromise, timeoutPromise])
+          .then(handleFormSuccess)
+          .catch(handleFormFailure);
       });
     </script>
   </body>
@@ -1790,4 +1436,13 @@ function getAdjustmentFormHtml() {
     </script>
   </body>
 </html>`;
+}
+
+/**
+ * Gets the HTML content for the progress indicator
+ * @return {string} HTML content
+ */
+function getProgressIndicatorHtml() {
+  // Delegate to the Main.gs implementation
+  return getProgressIndicatorHtml();
 }
