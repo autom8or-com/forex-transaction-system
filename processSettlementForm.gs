@@ -7,7 +7,7 @@
 function processSettlementForm(formData) {
   try {
     // Initialize processing tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     // Get pending transaction data
     const props = PropertiesService.getScriptProperties();
@@ -17,7 +17,7 @@ function processSettlementForm(formData) {
       return {
         success: false,
         message: 'No pending transaction found',
-        processingSteps: getProcessingSteps()
+        processingSteps: FOREX.Utils.getProcessingSteps()
       };
     }
     
@@ -71,14 +71,14 @@ function processSettlementForm(formData) {
     };
     
     // Create the transaction
-    const result = createTransaction(transactionData);
+    const result = FOREX.Transactions.createTransaction(transactionData);
     
     // Clear pending transaction data
     props.deleteProperty('pendingTransaction');
     
     // Ensure processing steps are included
     if (!result.processingSteps) {
-      result.processingSteps = getProcessingSteps();
+      result.processingSteps = FOREX.Utils.getProcessingSteps();
     }
     
     return result;
@@ -87,7 +87,7 @@ function processSettlementForm(formData) {
     return {
       success: false,
       message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }

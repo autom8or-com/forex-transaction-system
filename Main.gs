@@ -78,7 +78,7 @@ function showTransactionForm() {
   }
   
   // If the template exists, we can proceed with the actual implementation in FormHandlers.gs
-  const config = getConfigSettings();
+  const config = FOREX.Utils.getConfigSettings();
   
   // Get staff list from config
   const staffList = config.staffNames ? config.staffNames.split(',') : [''];
@@ -147,7 +147,7 @@ function setupSystem() {
   if (typeof FOREX !== 'undefined' && FOREX.Utils && FOREX.Utils.createHtmlTemplates) {
     FOREX.Utils.createHtmlTemplates();
   } else {
-    createHtmlTemplates();
+    FOREX.Utils.createHtmlTemplates();
   }
   
   // Initialize FOREX system
@@ -569,7 +569,7 @@ function getConfigSettings() {
   for (let i = 1; i < configData.length; i++) {
     const setting = configData[i][0];
     const value = configData[i][1];
-    config[camelCase(setting)] = value;
+    config[FOREX.Utils.camelCase(setting)] = value; // Refactored
   }
   
   return config;
@@ -587,6 +587,10 @@ function camelCase(str) {
   }
   
   // Fallback implementation
+  // This specific fallback for camelCase in Main.gs is now less likely to be hit
+  // if getConfigSettings (its primary caller in this file) uses FOREX.Utils.camelCase.
+  // However, if other Main.gs functions were to call this global camelCase,
+  // they should also be refactored or this function removed if truly unused.
   return str
     .replace(/\s(.)/g, function($1) { return $1.toUpperCase(); })
     .replace(/\s/g, '')

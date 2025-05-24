@@ -16,10 +16,10 @@
 function updateInventoryForDateAndCurrency(date, currency) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     // Track step for processing
-    addProcessingStep("Starting inventory update for " + currency);
+    FOREX.Utils.addProcessingStep("Starting inventory update for " + currency);
     updateProcessingStatus("Starting update for " + currency, { date: formatDate(date) });
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -30,7 +30,7 @@ function updateInventoryForDateAndCurrency(date, currency) {
       updateProcessingStatus("Creating inventory sheet", { currency: currency });
       setupInventorySheet();
       inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
-      addProcessingStep("Created inventory tracking sheet");
+      FOREX.Utils.addProcessingStep("Created inventory tracking sheet");
     }
     
     // Format date for searching
@@ -58,7 +58,7 @@ function updateInventoryForDateAndCurrency(date, currency) {
       { date: dateFormatted, currency: currency });
     
     const previousDayClosing = getPreviousDayClosing(date, currency);
-    addProcessingStep("Retrieved previous day closing balance");
+    FOREX.Utils.addProcessingStep("Retrieved previous day closing balance");
     
     // Get purchases and sales for this date
     updateProcessingStatus("Calculating purchases and sales", 
@@ -73,7 +73,7 @@ function updateInventoryForDateAndCurrency(date, currency) {
     const adjustments = getAdjustmentsForDate(date, currency);
     const closingBalance = openingBalance + purchases - sales + adjustments;
     
-    addProcessingStep("Calculated inventory transactions and balances");
+    FOREX.Utils.addProcessingStep("Calculated inventory transactions and balances");
     updateProcessingStatus("Calculated inventory values", 
       { 
         opening: openingBalance,
@@ -94,7 +94,7 @@ function updateInventoryForDateAndCurrency(date, currency) {
       
       updateProcessingStatus("Updated existing inventory record", 
         { rowIndex: rowIndex });
-      addProcessingStep("Updated existing inventory record");
+      FOREX.Utils.addProcessingStep("Updated existing inventory record");
     } else {
       // Create new entry
       const inventoryRow = [
@@ -114,7 +114,7 @@ function updateInventoryForDateAndCurrency(date, currency) {
       
       updateProcessingStatus("Created new inventory record", 
         { row: inventorySheet.getLastRow() });
-      addProcessingStep("Created new inventory record");
+      FOREX.Utils.addProcessingStep("Created new inventory record");
       
       // Format the new row
       const newRowIndex = inventorySheet.getLastRow();
@@ -123,11 +123,11 @@ function updateInventoryForDateAndCurrency(date, currency) {
     
     // Update future day opening balances if necessary
     updateFutureDaysOpeningBalance(date, currency, closingBalance);
-    addProcessingStep("Updated future days with new balances");
+    FOREX.Utils.addProcessingStep("Updated future days with new balances");
     
     updateProcessingStatus("Completed inventory update", 
       { date: dateFormatted, currency: currency });
-    addProcessingStep("Inventory update completed successfully");
+    FOREX.Utils.addProcessingStep("Inventory update completed successfully");
     
     return {
       success: true,
@@ -137,18 +137,18 @@ function updateInventoryForDateAndCurrency(date, currency) {
       sales: sales,
       adjustments: adjustments,
       closingBalance: closingBalance,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   } catch (error) {
     Logger.log(`Error updating inventory: ${error}`);
     updateProcessingStatus("ERROR updating inventory", 
       { error: error.toString() });
-    addProcessingStep("Error occurred during inventory update");
+    FOREX.Utils.addProcessingStep("Error occurred during inventory update");
     
     return {
       success: false,
       message: `Error updating inventory: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
@@ -393,25 +393,25 @@ function setupInventorySheet() {
  */
 function getCurrentInventoryBalances() {
   // Initialize processing steps tracking
-  initializeProcessingSteps();
-  addProcessingStep("Retrieving current inventory balances");
+  FOREX.Utils.initializeProcessingSteps();
+  FOREX.Utils.addProcessingStep("Retrieving current inventory balances");
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
   
   if (!inventorySheet) {
-    addProcessingStep("No inventory sheet found");
+    FOREX.Utils.addProcessingStep("No inventory sheet found");
     return {
       success: false,
       message: "No inventory sheet found",
       balances: [],
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
   
   // Get inventory data
   const inventoryData = inventorySheet.getDataRange().getValues();
-  addProcessingStep("Retrieved inventory data");
+  FOREX.Utils.addProcessingStep("Retrieved inventory data");
   
   // Initialize array to hold the latest balance for each currency
   const balances = {};
@@ -440,13 +440,13 @@ function getCurrentInventoryBalances() {
     });
   }
   
-  addProcessingStep("Processed inventory balances");
+  FOREX.Utils.addProcessingStep("Processed inventory balances");
   
   return {
     success: true,
     message: "Retrieved current inventory balances",
     balances: result,
-    processingSteps: getProcessingSteps()
+    processingSteps: FOREX.Utils.getProcessingSteps()
   };
 }
 
@@ -458,26 +458,26 @@ function getCurrentInventoryBalances() {
  */
 function getInventoryHistory(currency, days) {
   // Initialize processing steps tracking
-  initializeProcessingSteps();
-  addProcessingStep("Retrieving inventory history");
+  FOREX.Utils.initializeProcessingSteps();
+  FOREX.Utils.addProcessingStep("Retrieving inventory history");
   
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
   
   if (!inventorySheet) {
-    addProcessingStep("No inventory sheet found");
+    FOREX.Utils.addProcessingStep("No inventory sheet found");
     return {
       success: false,
       message: "No inventory sheet found",
       history: [],
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
   
   // Calculate cutoff date
   const cutoffDate = new Date();
   cutoffDate.setDate(cutoffDate.getDate() - days);
-  addProcessingStep(`Calculated date range (${days} days)`);  
+  FOREX.Utils.addProcessingStep(`Calculated date range (${days} days)`);  
   
   // Get inventory data
   const inventoryData = inventorySheet.getDataRange().getValues();
@@ -504,13 +504,13 @@ function getInventoryHistory(currency, days) {
   // Sort by date
   history.sort((a, b) => a.date - b.date);
   
-  addProcessingStep(`Found ${history.length} days of inventory data for ${currency}`);
+  FOREX.Utils.addProcessingStep(`Found ${history.length} days of inventory data for ${currency}`);
   
   return {
     success: true,
     message: `Retrieved inventory history for ${currency}`,
     history: history,
-    processingSteps: getProcessingSteps()
+    processingSteps: FOREX.Utils.getProcessingSteps()
   };
 }
 
@@ -522,19 +522,19 @@ function getInventoryHistory(currency, days) {
 function reconcileInventory(date) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
-    addProcessingStep("Starting inventory reconciliation");
+    FOREX.Utils.initializeProcessingSteps();
+    FOREX.Utils.addProcessingStep("Starting inventory reconciliation");
     updateProcessingStatus("Starting reconciliation", { date: formatDate(date) });
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const inventorySheet = ss.getSheetByName(SHEET_INVENTORY);
     
     if (!inventorySheet) {
-      addProcessingStep("No inventory sheet found");
+      FOREX.Utils.addProcessingStep("No inventory sheet found");
       return {
         success: false,
         message: 'Inventory sheet not found',
-        processingSteps: getProcessingSteps()
+        processingSteps: FOREX.Utils.getProcessingSteps()
       };
     }
     
@@ -562,7 +562,7 @@ function reconcileInventory(date) {
       }
     }
     
-    addProcessingStep(`Found ${Object.keys(currencyBalances).length} currencies to reconcile`);
+    FOREX.Utils.addProcessingStep(`Found ${Object.keys(currencyBalances).length} currencies to reconcile`);
     
     // Calculate balances from transactions
     updateProcessingStatus("Calculating from transactions", 
@@ -587,7 +587,7 @@ function reconcileInventory(date) {
       currencyBalances[currency].reconciled = Math.abs(currencyBalances[currency].discrepancy) < 0.01;
     }
     
-    addProcessingStep("Calculated balances from transactions");
+    FOREX.Utils.addProcessingStep("Calculated balances from transactions");
     
     // Check if all currencies are reconciled
     let allReconciled = true;
@@ -604,9 +604,9 @@ function reconcileInventory(date) {
       { reconciled: allReconciled, discrepancies: discrepancies });
     
     if (allReconciled) {
-      addProcessingStep("All currencies reconciled successfully");
+      FOREX.Utils.addProcessingStep("All currencies reconciled successfully");
     } else {
-      addProcessingStep(`Found ${discrepancies.length} currencies with discrepancies`);
+      FOREX.Utils.addProcessingStep(`Found ${discrepancies.length} currencies with discrepancies`);
     }
     
     return {
@@ -616,17 +616,17 @@ function reconcileInventory(date) {
       currencyBalances: currencyBalances,
       allReconciled: allReconciled,
       discrepancies: discrepancies,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   } catch (error) {
     Logger.log(`Error reconciling inventory: ${error}`);
     updateProcessingStatus("ERROR in reconciliation", { error: error.toString() });
-    addProcessingStep("Error occurred during reconciliation");
+    FOREX.Utils.addProcessingStep("Error occurred during reconciliation");
     
     return {
       success: false,
       message: `Error reconciling inventory: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }

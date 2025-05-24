@@ -46,7 +46,7 @@ function getAllConfig() {
       const value = configData[i][1];
       
       if (setting) {
-        config[camelCase(setting)] = value;
+        config[FOREX.Utils.camelCase(setting)] = value;
       }
     }
     

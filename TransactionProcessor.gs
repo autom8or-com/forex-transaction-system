@@ -20,7 +20,7 @@ let currentStepIndex = 0;
 function createTransaction(transactionData) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
@@ -29,7 +29,7 @@ function createTransaction(transactionData) {
     updateProcessingStatus("Generating transaction ID...");
     
     // Generate transaction ID
-    const config = getConfigSettings();
+    const config = FOREX.Utils.getConfigSettings();
     const lastRow = transactionSheet.getLastRow();
     const transactionNumber = lastRow > 1 ? lastRow : 1;
     
@@ -44,7 +44,7 @@ function createTransaction(transactionData) {
     const valueNGN = transactionData.amount * transactionData.rate;
     
     updateProcessingStatus("Saving transaction data...");
-    addProcessingStep("Transaction data validated");
+    FOREX.Utils.addProcessingStep("Transaction data validated");
     
     // Create transaction row
     const transactionRow = [
@@ -71,7 +71,7 @@ function createTransaction(transactionData) {
     transactionSheet.getRange(newRowIndex, 6, 1, 3).setNumberFormat('#,##0.00');
     
     updateProcessingStatus("Transaction record created successfully");
-    addProcessingStep("Transaction record created");
+    FOREX.Utils.addProcessingStep("Transaction record created");
     
     // Create the Transaction_Legs sheet if it doesn't exist
     let legsSheet = ss.getSheetByName(SHEET_TRANSACTION_LEGS);
@@ -94,7 +94,7 @@ function createTransaction(transactionData) {
         }
         addTransactionLeg(transactionId, leg);
       }
-      addProcessingStep(`${transactionData.legs.length} settlement legs processed`);
+      FOREX.Utils.addProcessingStep(`${transactionData.legs.length} settlement legs processed`);
     } else {
       // Create a default leg if none provided
       updateProcessingStatus("Creating default settlement leg...");
@@ -108,7 +108,7 @@ function createTransaction(transactionData) {
       };
       
       addTransactionLeg(transactionId, defaultLeg);
-      addProcessingStep("Default settlement leg created");
+      FOREX.Utils.addProcessingStep("Default settlement leg created");
     }
     
     // Validate that the legs were properly created
@@ -118,15 +118,15 @@ function createTransaction(transactionData) {
     // Update inventory if configured to do so
     if (config.autoUpdateInventory === 'TRUE') {
       updateProcessingStatus("Updating inventory...");
-      updateInventoryForTransaction(transactionId);
-      addProcessingStep("Inventory updated");
+      updateInventoryForTransaction(transactionId); // This will be refactored in a subsequent step if updateInventoryForTransaction calls a global
+      FOREX.Utils.addProcessingStep("Inventory updated");
     }
     
     updateProcessingStatus("Transaction completed successfully!");
-    addProcessingStep("Transaction completed successfully");
+    FOREX.Utils.addProcessingStep("Transaction completed successfully");
     
     // Get the processing steps to return to client
-    const processingSteps = getProcessingSteps();
+    const processingSteps = FOREX.Utils.getProcessingSteps();
     
     return {
       success: true,
@@ -346,9 +346,9 @@ function validateTransactionLegs(transactionId) {
     
     // Add a processing step
     if (isValid) {
-      addProcessingStep("Transaction legs validated successfully");
+      FOREX.Utils.addProcessingStep("Transaction legs validated successfully");
     } else {
-      addProcessingStep("Transaction legs validation failed - amount mismatch");
+      FOREX.Utils.addProcessingStep("Transaction legs validation failed - amount mismatch");
     }
     
     return {
@@ -407,7 +407,7 @@ function updateInventoryForTransaction(transactionId) {
     updateProcessingStatus(`Updating inventory for ${transaction.currency}...`);
     
     // Call inventory update function
-    const result = updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
+    const result = FOREX.Inventory.updateInventoryForDateAndCurrency(transaction.date, transaction.currency);
     
     return {
       success: result.success,
@@ -493,10 +493,10 @@ function getTransactionLegs(transactionId) {
 function processSwapTransaction(swapData) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     updateProcessingStatus("Setting up sell transaction...");
-    addProcessingStep("Swap data validated");
+    FOREX.Utils.addProcessingStep("Swap data validated");
     
     // Create two linked transactions - one for each currency
     const sellTransaction = {
@@ -529,19 +529,19 @@ function processSwapTransaction(swapData) {
     
     // Create both transactions
     updateProcessingStatus("Processing sell side of swap...");
-    const sellResult = createTransaction(sellTransaction);
-    addProcessingStep(`Sell transaction created (${swapData.fromCurrency})`);
+    const sellResult = createTransaction(sellTransaction); // Assuming this createTransaction is the local one, which is then refactored if it calls globals
+    FOREX.Utils.addProcessingStep(`Sell transaction created (${swapData.fromCurrency})`);
     
     updateProcessingStatus("Processing buy side of swap...");
-    const buyResult = createTransaction(buyTransaction);
-    addProcessingStep(`Buy transaction created (${swapData.toCurrency})`);
+    const buyResult = createTransaction(buyTransaction); // Same assumption
+    FOREX.Utils.addProcessingStep(`Buy transaction created (${swapData.toCurrency})`);
     
     updateProcessingStatus("Finalizing swap transaction...");
-    addProcessingStep("Inventory updated for both currencies");
-    addProcessingStep("Swap transaction completed successfully");
+    FOREX.Utils.addProcessingStep("Inventory updated for both currencies");
+    FOREX.Utils.addProcessingStep("Swap transaction completed successfully");
     
     // Get the processing steps
-    const processingSteps = getProcessingSteps();
+    const processingSteps = FOREX.Utils.getProcessingSteps();
     
     // Return results
     if (sellResult.success && buyResult.success) {
@@ -579,13 +579,13 @@ function processSwapTransaction(swapData) {
 function updateTransaction(transactionId, updateData) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     const ss = SpreadsheetApp.getActiveSpreadsheet();
     const transactionSheet = ss.getSheetByName(SHEET_TRANSACTIONS);
     
     updateProcessingStatus("Finding transaction...");
-    addProcessingStep("Transaction lookup initiated");
+    FOREX.Utils.addProcessingStep("Transaction lookup initiated");
     
     // Find the transaction
     const transactions = transactionSheet.getDataRange().getValues();
@@ -602,11 +602,11 @@ function updateTransaction(transactionId, updateData) {
       return {
         success: false,
         message: `Transaction ${transactionId} not found`,
-        processingSteps: getProcessingSteps()
+        processingSteps: FOREX.Utils.getProcessingSteps()
       };
     }
     
-    addProcessingStep("Transaction found");
+    FOREX.Utils.addProcessingStep("Transaction found");
     updateProcessingStatus("Updating transaction fields...");
     
     // Update fields
@@ -664,21 +664,21 @@ function updateTransaction(transactionId, updateData) {
       transactionSheet.getRange(rowIndex, 13).setValue(updateData.notes);
     }
     
-    addProcessingStep("Transaction fields updated");
+    FOREX.Utils.addProcessingStep("Transaction fields updated");
     
     // Update inventory if needed
-    const config = getConfigSettings();
+    const config = FOREX.Utils.getConfigSettings();
     if (config.autoUpdateInventory === 'TRUE') {
       updateProcessingStatus("Updating inventory...");
-      updateInventoryForTransaction(transactionId);
-      addProcessingStep("Inventory recalculated");
+      updateInventoryForTransaction(transactionId); // Assuming this will be or is refactored
+      FOREX.Utils.addProcessingStep("Inventory recalculated");
     }
     
     updateProcessingStatus("Update completed successfully");
-    addProcessingStep("Transaction update completed");
+    FOREX.Utils.addProcessingStep("Transaction update completed");
     
     // Get the processing steps
-    const processingSteps = getProcessingSteps();
+    const processingSteps = FOREX.Utils.getProcessingSteps();
     
     return {
       success: true,
@@ -690,7 +690,7 @@ function updateTransaction(transactionId, updateData) {
     return {
       success: false,
       message: `Error updating transaction: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
@@ -703,10 +703,10 @@ function updateTransaction(transactionId, updateData) {
 function recordInventoryAdjustment(adjustmentData) {
   try {
     // Initialize processing steps tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     updateProcessingStatus("Validating adjustment data...");
-    addProcessingStep("Adjustment data validated");
+    FOREX.Utils.addProcessingStep("Adjustment data validated");
     
     // Create the Adjustments sheet if it doesn't exist
     const ss = SpreadsheetApp.getActiveSpreadsheet();
@@ -755,21 +755,21 @@ function recordInventoryAdjustment(adjustmentData) {
     const newRowIndex = adjustmentsSheet.getLastRow();
     adjustmentsSheet.getRange(newRowIndex, 4, 1, 1).setNumberFormat('#,##0.00');
     
-    addProcessingStep("Adjustment record saved");
+    FOREX.Utils.addProcessingStep("Adjustment record saved");
     updateProcessingStatus("Updating inventory for adjustment...");
     
     // Update inventory
-    const inventoryResult = updateInventoryForDateAndCurrency(
+    const inventoryResult = FOREX.Inventory.updateInventoryForDateAndCurrency(
       new Date(adjustmentData.date), 
       adjustmentData.currency
     );
     
-    addProcessingStep(`Inventory adjusted for ${adjustmentData.currency}`);
+    FOREX.Utils.addProcessingStep(`Inventory adjusted for ${adjustmentData.currency}`);
     updateProcessingStatus("Adjustment completed successfully!");
-    addProcessingStep("Adjustment completed successfully");
+    FOREX.Utils.addProcessingStep("Adjustment completed successfully");
     
     // Get the processing steps
-    const processingSteps = getProcessingSteps();
+    const processingSteps = FOREX.Utils.getProcessingSteps();
     
     return {
       success: true,
@@ -782,7 +782,7 @@ function recordInventoryAdjustment(adjustmentData) {
     return {
       success: false,
       message: `Error recording inventory adjustment: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
@@ -842,7 +842,7 @@ function getConfigSettings() {
   for (let i = 1; i < configData.length; i++) {
     const setting = configData[i][0];
     const value = configData[i][1];
-    config[camelCase(setting)] = value;
+    config[FOREX.Utils.camelCase(setting)] = value;
   }
   
   return config;

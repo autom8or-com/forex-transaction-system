@@ -13,7 +13,7 @@
  */
 function showTransactionForm() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const config = getConfigSettings();
+  const config = FOREX.Utils.getConfigSettings();
   
   // Get staff list from config
   const staffList = config.staffNames ? config.staffNames.split(',') : [''];
@@ -49,16 +49,16 @@ function showTransactionForm() {
 function processTransactionForm(formData) {
   try {
     // Initialize processing tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     // If it's a swap transaction, redirect to swap handler
     if (formData.transactionType === 'Swap') {
-      addProcessingStep("Detected swap transaction, redirecting to swap form");
+      FOREX.Utils.addProcessingStep("Detected swap transaction, redirecting to swap form");
       return {
         success: false,
         message: 'Please use the Swap Transaction form for swap transactions',
         showSwapForm: true,
-        processingSteps: getProcessingSteps()
+        processingSteps: FOREX.Utils.getProcessingSteps()
       };
     }
     
@@ -70,20 +70,20 @@ function processTransactionForm(formData) {
       const props = PropertiesService.getScriptProperties();
       props.setProperty('pendingTransaction', JSON.stringify(formData));
       
-      addProcessingStep("Multi-settlement transaction detected");
-      addProcessingStep("Transaction data saved for settlement");
-      addProcessingStep("Preparing settlement form");
+      FOREX.Utils.addProcessingStep("Multi-settlement transaction detected");
+      FOREX.Utils.addProcessingStep("Transaction data saved for settlement");
+      FOREX.Utils.addProcessingStep("Preparing settlement form");
       
       return {
         success: true,
         message: 'Please continue to add settlement details',
         showSettlementForm: true,
-        processingSteps: getProcessingSteps()
+        processingSteps: FOREX.Utils.getProcessingSteps()
       };
     }
     
     // Regular single-settlement transaction
-    addProcessingStep("Transaction data validated");
+    FOREX.Utils.addProcessingStep("Transaction data validated");
     
     const transactionData = {
       date: formData.date,
@@ -99,7 +99,7 @@ function processTransactionForm(formData) {
     };
     
     // Create the transaction
-    const result = createTransaction(transactionData);
+    const result = FOREX.Transactions.createTransaction(transactionData);
     
     return result;
   } catch (error) {
@@ -107,7 +107,7 @@ function processTransactionForm(formData) {
     return {
       success: false,
       message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
@@ -174,7 +174,7 @@ function processSettlementForm(formData) {
  */
 function showSwapForm() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
-  const config = getConfigSettings();
+  const config = FOREX.Utils.getConfigSettings();
   
   // Get staff list from config
   const staffList = config.staffNames ? config.staffNames.split(',') : [''];
@@ -208,12 +208,12 @@ function showSwapForm() {
 function processSwapForm(formData) {
   try {
     // Initialize processing tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
     // Generate swap ID
     const swapId = 'SWAP-' + Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'yyyyMMdd-HHmmss');
     
-    addProcessingStep("Swap data validated");
+    FOREX.Utils.addProcessingStep("Swap data validated");
     
     // Create swap data
     const swapData = {
@@ -231,11 +231,11 @@ function processSwapForm(formData) {
     };
     
     // Process the swap transaction
-    const result = processSwapTransaction(swapData);
+    const result = FOREX.Transactions.processSwapTransaction(swapData);
     
     // Ensure processing steps are included
     if (!result.processingSteps) {
-      result.processingSteps = getProcessingSteps();
+      result.processingSteps = FOREX.Utils.getProcessingSteps();
     }
     
     return result;
@@ -244,7 +244,7 @@ function processSwapForm(formData) {
     return {
       success: false,
       message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
@@ -328,9 +328,9 @@ function showInventoryAdjustmentForm() {
 function processAdjustmentForm(formData) {
   try {
     // Initialize processing tracking
-    initializeProcessingSteps();
+    FOREX.Utils.initializeProcessingSteps();
     
-    addProcessingStep("Adjustment data validated");
+    FOREX.Utils.addProcessingStep("Adjustment data validated");
     
     // Create adjustment data
     const adjustmentData = {
@@ -341,11 +341,11 @@ function processAdjustmentForm(formData) {
     };
     
     // Record the adjustment
-    const result = recordInventoryAdjustment(adjustmentData);
+    const result = FOREX.Inventory.recordInventoryAdjustment(adjustmentData);
     
     // Ensure processing steps are included
     if (!result.processingSteps) {
-      result.processingSteps = getProcessingSteps();
+      result.processingSteps = FOREX.Utils.getProcessingSteps();
     }
     
     return result;
@@ -354,7 +354,7 @@ function processAdjustmentForm(formData) {
     return {
       success: false,
       message: `Error processing form: ${error.toString()}`,
-      processingSteps: getProcessingSteps()
+      processingSteps: FOREX.Utils.getProcessingSteps()
     };
   }
 }
