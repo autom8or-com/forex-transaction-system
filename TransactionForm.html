@@ -185,7 +185,7 @@
         google.script.run
           .withSuccessHandler(handleFormSuccess)
           .withFailureHandler(handleFormFailure)
-          .processTransactionForm(formData);
+          .processTransactionForm_HTML(formData);
       });
       
       // Initialize

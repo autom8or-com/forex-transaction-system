@@ -780,3 +780,85 @@ function addProcessingStep(step) {
 function getProcessingSteps() {
   return _processingSteps;
 }
+
+// --- HTML Wrapper Functions ---
+
+/**
+ * Wrapper for FOREX.Forms.processTransactionForm, called from HTML.
+ * @param {Object} formData The data from the transaction form.
+ * @return {Object} Result of the form processing.
+ */
+function processTransactionForm_HTML(formData) {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processTransactionForm) {
+    return FOREX.Forms.processTransactionForm(formData);
+  } else {
+    Logger.log("ERROR: FOREX.Forms.processTransactionForm is not available.");
+    throw new Error("Namespace FOREX.Forms.processTransactionForm not found.");
+  }
+}
+
+/**
+ * Wrapper for FOREX.Forms.processAdjustmentForm, called from HTML.
+ * @param {Object} formData The data from the adjustment form.
+ * @return {Object} Result of the form processing.
+ */
+function processAdjustmentForm_HTML(formData) {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processAdjustmentForm) {
+    return FOREX.Forms.processAdjustmentForm(formData);
+  } else {
+    Logger.log("ERROR: FOREX.Forms.processAdjustmentForm is not available.");
+    throw new Error("Namespace FOREX.Forms.processAdjustmentForm not found.");
+  }
+}
+
+/**
+ * Wrapper for FOREX.Forms.showSettlementForm, called from HTML.
+ */
+function showSettlementForm_HTML() {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.showSettlementForm) {
+    FOREX.Forms.showSettlementForm();
+  } else {
+    Logger.log("ERROR: FOREX.Forms.showSettlementForm is not available.");
+    throw new Error("Namespace FOREX.Forms.showSettlementForm not found.");
+  }
+}
+
+/**
+ * Wrapper for FOREX.Forms.showSwapForm, called from HTML.
+ */
+function showSwapForm_HTML() {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.showSwapForm) {
+    FOREX.Forms.showSwapForm();
+  } else {
+    Logger.log("ERROR: FOREX.Forms.showSwapForm is not available.");
+    throw new Error("Namespace FOREX.Forms.showSwapForm not found.");
+  }
+}
+
+/**
+ * Wrapper for FOREX.Forms.processSettlementForm, called from HTML.
+ * @param {Object} formData The data from the settlement form.
+ * @return {Object} Result of the form processing.
+ */
+function processSettlementForm_HTML(formData) {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processSettlementForm) {
+    return FOREX.Forms.processSettlementForm(formData);
+  } else {
+    Logger.log("ERROR: FOREX.Forms.processSettlementForm is not available.");
+    throw new Error("Namespace FOREX.Forms.processSettlementForm not found.");
+  }
+}
+
+/**
+ * Wrapper for FOREX.Forms.processSwapForm, called from HTML.
+ * @param {Object} formData The data from the swap form.
+ * @return {Object} Result of the form processing.
+ */
+function processSwapForm_HTML(formData) {
+  if (typeof FOREX !== 'undefined' && FOREX.Forms && FOREX.Forms.processSwapForm) {
+    return FOREX.Forms.processSwapForm(formData);
+  } else {
+    Logger.log("ERROR: FOREX.Forms.processSwapForm is not available.");
+    throw new Error("Namespace FOREX.Forms.processSwapForm not found.");
+  }
+}

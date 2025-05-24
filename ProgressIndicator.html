@@ -300,7 +300,7 @@
         
         // Short delay before redirect to show the final status
         setTimeout(function() {
-          google.script.run.showSettlementForm();
+          google.script.run.showSettlementForm_HTML();
           google.script.host.close();
         }, 1000);
       } else if (result.showSwapForm) {
@@ -309,7 +309,7 @@
         
         // Short delay before redirect
         setTimeout(function() {
-          google.script.run.showSwapForm();
+          google.script.run.showSwapForm_HTML();
           google.script.host.close();
         }, 1000);
       } else {
