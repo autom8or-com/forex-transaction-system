@@ -100,6 +100,18 @@ FOREX.Utils.createHtmlTemplates = function() {
 };
 
 /**
+ * Pads a number with leading zeros
+ * @param {number} num - The number to pad
+ * @param {number} size - The desired string length
+ * @return {string} Padded number as string
+ */
+FOREX.Utils.padNumber = function(num, size) {
+  let s = num.toString();
+  while (s.length < size) s = "0" + s;
+  return s;
+};
+
+/**
  * Creates an HTML file in the script project
  * @param {string} filename - The filename to create
  * @param {string} content - The file content
